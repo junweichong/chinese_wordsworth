@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chinese Wordsworth</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Mono:wght@300;400;500&display=swap"
+    rel="stylesheet" />
+  <script src="/socket.io/socket.io.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <!-- Reconnect Banner -->
+  <div id="reconnect-banner" class="reconnect-banner">
+    <div class="reconnect-spinner"></div>
+    <span>网络连接已断开，正在重新连接游戏...</span>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+     LANDING SCREEN
+══════════════════════════════════════════════════════ -->
+  <div id="screen-landing" class="screen active">
+    <div class="landing-inner">
+      <h1 class="wordmark">Chinese Words<em>worth</em></h1>
+      <p class="tagline">placeholder</p>
+
+      <div class="card" style="position:relative;">
+        <button class="info-button" type="button" onclick="openHowToPlay()" aria-label="游戏玩法" title="游戏玩法">i</button>
+        <h2>创建新游戏</h2>
+        <div class="input-group">
+          <input type="text" id="create-name" placeholder="输入你的名字" maxlength="20" autocomplete="off" />
+        </div>
+        <button class="btn btn-primary" onclick="createRoom()">创建房间</button>
+      </div>
+
+      <div class="divider">或</div>
+
+      <div class="card">
+        <h2>加入游戏</h2>
+        <div class="input-group">
+          <input type="text" id="join-name" placeholder="输入你的名字" maxlength="20" autocomplete="off" />
+          <input type="text" id="join-code" placeholder="房间代码 (如 XKQZ)" maxlength="4" autocomplete="off"
+            style="text-transform:uppercase;letter-spacing:0.2em;" />
+        </div>
+        <button class="btn btn-secondary" onclick="joinRoom()">加入房间</button>
+      </div>
+
+      <div id="landing-error" class="error-msg"></div>
+
+      <section class="changelog" aria-labelledby="changelog-title">
+        <div class="changelog-heading">
+          <h2 id="changelog-title">最新更新</h2>
+          <span class="changelog-mark" aria-hidden="true">✦</span>
+        </div>
+        <div id="changelog-list" class="changelog-list" aria-live="polite">
+          <p class="changelog-status">正在加载更新...</p>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+     LOBBY SCREEN
+══════════════════════════════════════════════════════ -->
+  <div id="screen-lobby" class="screen">
+    <div class="lobby-header">
+      <h1>Chinese Wordsworth</h1>
+      <p class="room-hint">将此代码分享给其他玩家：</p>
+      <div class="room-code" id="lobby-room-code">----</div>
+      <p class="room-hint" id="lobby-player-count">等待玩家加入…</p>
+    </div>
+
+    <div class="player-list-wrap">
+      <p class="player-list-title">房间中的玩家</p>
+      <ul class="player-list" id="lobby-player-list"></ul>
+    </div>
+
+    <div class="card" style="padding:1rem">
+      <p style="font-size:0.8rem;color:var(--slate);margin-bottom:0.75rem;">
+        <strong>游戏玩法：</strong>
+        <br> 玩家轮流从 10 个汉字的市场（7 普通字、2 稀有字、1 史诗字）中选择一个汉字。
+        <br> 将选择的汉字填入你个人的 6×6 棋盘中，横向或纵向拼出词语。
+        <br> 前 35 回合从市场选字，第 36 回合每位玩家可自行输入任意汉字填入最后一个空格。
+        <br> 3字词 = 3分，4字词/成语 = 8分，5字词 = 12分，6字词 = 20分。
+        <br> 得分最高者获胜！
+      </p>
+    </div>
+
+    <div id="lobby-host-controls" style="display:none; flex-direction:column; gap:0.5rem;">
+      <label style="font-size:0.8rem; color:var(--slate);">回合思考时间（秒）：</label>
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <input type="number" id="timer-input" value="30" min="1" max="300"
+          style="padding: 0.5rem; border-radius: 4px; font-family: 'DM Mono', monospace; background: var(--paper); border: 1.5px solid rgba(200,169,110,0.5); width:80px;">
+        <label style="font-size:0.8rem; color:var(--ink); display:flex; align-items:center; gap:0.25rem;">
+          <input type="checkbox" id="timer-off-cb" onchange="toggleTimerInput(this)"> 无时间限制
+        </label>
+      </div>
+      <label class="host-option" style="font-size:0.8rem;color:var(--ink);display:flex;align-items:center;gap:0.35rem;">
+        <input type="checkbox" id="spectator-host-cb"> 观战模式（房主不参与游戏）
+      </label>
+      <label class="host-option" style="font-size:0.8rem;color:var(--ink);display:flex;align-items:center;gap:0.35rem;">
+        <input type="checkbox" id="auto-score-host-cb" onchange="toggleAutoScoreInput(this)"> 自动计算得分
+      </label>
+      <label style="font-size:0.8rem;color:var(--ink);display:flex;align-items:center;gap:0.25rem;">
+        <span>终局寻词时间（秒）：</span>
+        <input type="number" id="manual-search-duration-input" value="120" min="60" max="600"
+          style="padding:0.35rem 0.45rem;border-radius:4px;font-family:'DM Mono',monospace;background:var(--paper);border:1.5px solid rgba(200,169,110,0.5);width:78px;">
+      </label>
+      <button class="btn btn-forest" onclick="startGame()" id="btn-start" style="margin-top:0.25rem;">开始游戏</button>
+    </div>
+    <div id="lobby-waiting-msg" style="text-align:center;font-size:0.82rem;color:var(--slate);display:none;">
+      等待房主开始游戏…
+    </div>
+
+    <button class="btn btn-secondary" onclick="leaveRoom()" style="margin-top:1rem;">离开房间</button>
+
+    <div id="lobby-error" class="error-msg"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+     GAME SCREEN
+══════════════════════════════════════════════════════ -->
+  <div id="screen-game" class="screen">
+    <div class="game-header">
+      <div style="display:flex;align-items:center;gap:0.4rem;">
+        <span class="game-title">Chinese Wordsworth</span>
+        <span class="game-room-badge" id="game-room-code-badge" title="房间代码">----</span>
+      </div>
+      <div id="timer-display" style="font-size:1.5rem; font-weight:bold; color:var(--red); display:none;">30s</div>
+      <div class="turn-badge" id="turn-badge">
+        <span>当前回合</span>
+        <strong id="turn-player-name">—</strong>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.25rem;">
+        <div style="font-size:0.75rem;color:var(--slate);text-align:right;">
+          回合 <span id="turn-index">0</span>/<span id="turn-total">0</span>
+        </div>
+        <div style="display:flex;gap:0.35rem;">
+          <button class="btn-secondary" id="btn-game-players" type="button" onclick="openPlayersModal()"
+            style="padding:0.2rem 0.5rem;font-size:clamp(0.65rem, 1.4vh, 0.75rem);display:none;align-items:center;gap:0.25rem;"
+            title="房间玩家" aria-label="房间玩家">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            玩家
+          </button>
+          <button class="btn-leave-game" onclick="leaveRoom()" title="离开游戏" aria-label="离开游戏">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            离开
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Call panel (visible during letter calling or final turn) -->
+    <div class="call-panel" id="call-panel">
+      <p id="call-status">等待当前玩家选择汉字。</p>
+      <div class="alphabet-grid" id="alphabet-grid"></div>
+      <div class="final-turn-input-container" id="final-input-container" style="display:none;">
+        <input type="text" id="final-character-input" class="final-turn-input" placeholder="输入单个汉字..." maxlength="2" />
+        <button class="btn btn-forest" id="btn-submit-final" type="button"
+          onclick="submitFinalCharacterInput()">确认</button>
+      </div>
+      <div id="market-refresh-info" class="market-refresh-info"></div>
+    </div>
+
+    <section class="action-status-panel" id="action-status-panel" aria-live="polite">
+      <h2>玩家状态</h2>
+      <ul id="action-status-list"></ul>
+    </section>
+
+    <!-- Player's 6x6 board -->
+    <div class="board-wrap">
+      <p class="board-label">你的棋盘 (6×6) — 点击空白格填入汉字</p>
+      <div class="board" id="game-board"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+     MANUAL SCORING SCREEN
+══════════════════════════════════════════════════════ -->
+  <div id="screen-manual-scoring" class="screen">
+    <div class="manual-header">
+      <div>
+        <p class="definition-kicker">终局寻词</p>
+        <h1>寻找你的词语</h1>
+        <p>在同一行或同一列连续选择汉字，然后确认词语。</p>
+      </div>
+      <div class="manual-timer" id="manual-timer">2:00</div>
+    </div>
+
+    <div class="manual-layout">
+      <main class="manual-board-panel">
+        <div class="manual-selection-bar" aria-live="polite">
+          <span id="manual-selection-word">点击汉字开始选词</span>
+          <button class="btn btn-secondary manual-clear-btn" type="button" onclick="clearManualSelection()">清除</button>
+        </div>
+        <div class="manual-board" id="manual-board" aria-label="你的终局棋盘"></div>
+        <div class="manual-actions">
+          <button class="btn btn-forest" id="manual-confirm-btn" type="button" onclick="confirmManualWord()"
+            disabled>确认词语</button>
+          <button class="btn btn-secondary manual-ready-btn" id="manual-ready-btn" type="button"
+            onclick="toggleManualReady()">准备就绪</button>
+          <p id="manual-ready-status" class="manual-ready-status" aria-live="polite"></p>
+          <p id="manual-feedback" class="manual-feedback" aria-live="polite"></p>
+        </div>
+      </main>
+
+      <aside class="manual-claims-panel">
+        <div class="manual-score-label">当前得分<strong id="manual-score">0</strong></div>
+        <h2>已找到的词语</h2>
+        <div id="manual-claims-list" class="manual-claims-list"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+     RESULTS SCREEN
+══════════════════════════════════════════════════════ -->
+  <div id="screen-results" class="screen">
+    <div class="results-header">
+      <h1>游戏结算</h1>
+      <p>最终排行榜</p>
+    </div>
+
+    <div class="leaderboard" id="leaderboard"></div>
+
+    <div class="words-found" id="my-words-wrap" style="display:none;">
+      <h3>你找到的词语</h3>
+      <div class="word-chips" id="my-words-list"></div>
+    </div>
+
+    <button class="btn btn-secondary" onclick="goHome()">返回主页</button>
+  </div>
+
+  <div id="definition-modal" class="definition-modal" aria-hidden="true">
+    <div class="definition-dialog" role="dialog" aria-modal="true" aria-labelledby="definition-word">
+      <button class="definition-close" type="button" onclick="closeDefinitionModal()" aria-label="关闭词典">✕</button>
+      <p class="definition-kicker">词典释义</p>
+      <h3 id="definition-word">词语</h3>
+      <div id="definition-content" class="definition-content"></div>
+    </div>
+  </div>
+
+  <div id="how-to-play-modal" class="definition-modal" aria-hidden="true">
+    <div class="definition-dialog" role="dialog" aria-modal="true" aria-labelledby="how-to-play-title">
+      <button class="definition-close" type="button" onclick="closeHowToPlay()" aria-label="关闭说明">✕</button>
+      <p class="definition-kicker">游戏玩法说明 — 中文版</p>
+      <h3 id="how-to-play-title">共同拼组汉语词成语</h3>
+      <div class="definition-content">
+        <ol class="how-to-play-list">
+          <li>创建或加入包含多名玩家的房间。</li>
+          <li>玩家轮流从 10 个字的市场（7 普通字、2 稀有字、1 史诗字）中选择汉字。</li>
+          <li>被选中的汉字位置将自动补充新字，且全场市场每 5 回合刷新一次。</li>
+          <li>将汉字填入你的 6×6 棋盘（共 36 格）中。</li>
+          <li>第 36 回合（最后一格），每位玩家可以自行输入任意汉字填入。</li>
+          <li>在横向或纵向上拼出 3–6 字的汉字词语或成语获取积分。</li>
+        </ol>
+        <p><strong>计分规则：</strong> 3字词得 3 分，4字词/成语得 8 分，5字词得 12 分，6字词得 20 分。</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="players-modal" class="definition-modal" aria-hidden="true">
+    <div class="definition-dialog" role="dialog" aria-modal="true" aria-labelledby="players-modal-title">
+      <button class="definition-close" type="button" onclick="closePlayersModal()" aria-label="关闭玩家列表">✕</button>
+      <p class="definition-kicker">房间</p>
+      <h3 id="players-modal-title">房间中的玩家</h3>
+      <div class="player-list-wrap" style="margin-top:0.75rem;">
+        <ul class="player-list" id="modal-player-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <script>
+    // ═══════════════════════════════════════════════════════
+    // State & Session Helpers
+    // ═══════════════════════════════════════════════════════
+    const socket = io();
+    let state = {
+      playerId: null,
+      playerName: null,
+      roomId: null,
+      isHost: false,
+      hostId: null,
+      phase: 'lobby',
+      players: [],
+      calledLetters: [],
+      currentTurnPlayerId: null,
+      turnIndex: 0,
+      totalTurns: 0,
+      currentLetter: null,
+      activeTurnId: null,
+      spectator: false,
+      placementStatus: [],
+      grid: Array(25).fill(''),   // player's own 5x5 board
+      selectedCell: null,
+      placedThisTurn: false,
+      manualReady: false,
+      finalTurnActive: false,
+    };
+
+    function saveSession(roomId, playerId, playerName) {
+      sessionStorage.setItem('wordsworth_session', JSON.stringify({ roomId, playerId, playerName }));
+    }
+
+    function clearSession() {
+      sessionStorage.removeItem('wordsworth_session');
+    }
+
+    function getSession() {
+      try {
+        return JSON.parse(sessionStorage.getItem('wordsworth_session'));
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function showReconnectBanner() {
+      document.getElementById('reconnect-banner').classList.add('visible');
+    }
+
+    function hideReconnectBanner() {
+      document.getElementById('reconnect-banner').classList.remove('visible');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Screen management
+    // ═══════════════════════════════════════════════════════
+    function showScreen(id) {
+      const target = document.getElementById('screen-' + id);
+      document.querySelectorAll('.screen').forEach(s => {
+        const isTarget = s === target;
+        s.classList.toggle('active', isTarget);
+        s.setAttribute('aria-hidden', String(!isTarget));
+      });
+
+      if (id === 'game' && state.roomId) {
+        const badge = document.getElementById('game-room-code-badge');
+        if (badge) badge.textContent = state.roomId;
+      }
+    }
+
+    function toast(msg, duration = 2500) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), duration);
+    }
+
+    function showError(id, msg) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.classList.add('visible');
+      setTimeout(() => el.classList.remove('visible'), 4000);
+    }
+
+    async function loadChangelog() {
+      const list = document.getElementById('changelog-list');
+      try {
+        const response = await fetch('/api/changelog');
+        if (!response.ok) throw new Error('Could not load changelog');
+        const entries = await response.json();
+
+        list.innerHTML = '';
+        if (!Array.isArray(entries) || entries.length === 0) {
+          list.innerHTML = '<p class="changelog-status">No updates yet.</p>';
+          return;
+        }
+
+        entries.slice(0, 3).forEach(entry => {
+          const article = document.createElement('article');
+          article.className = 'changelog-entry';
+
+          const meta = document.createElement('div');
+          meta.className = 'changelog-meta';
+          meta.textContent = `${entry.version} / ${entry.date}`;
+
+          const title = document.createElement('h3');
+          title.textContent = entry.title;
+
+          const changes = document.createElement('ul');
+          (Array.isArray(entry.changes) ? entry.changes : []).forEach(change => {
+            const item = document.createElement('li');
+            item.textContent = change;
+            changes.appendChild(item);
+          });
+
+          article.append(meta, title, changes);
+          list.appendChild(article);
+        });
+      } catch (error) {
+        list.innerHTML = '<p class="changelog-status">暂无法获取更新信息。</p>';
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Landing actions
+    // ═══════════════════════════════════════════════════════
+    function createRoom() {
+      const name = document.getElementById('create-name').value.trim();
+      if (!name) return showError('landing-error', '请输入你的名字。');
+      state.playerName = name;
+      socket.emit('create_room', { playerName: name });
+    }
+
+    function joinRoom() {
+      const name = document.getElementById('join-name').value.trim();
+      const code = document.getElementById('join-code').value.trim().toUpperCase();
+      if (!name) return showError('landing-error', '请输入你的名字。');
+      if (!code || code.length !== 4) return showError('landing-error', '请输入 4 位房间代码。');
+      state.playerName = name;
+      socket.emit('join_room', { roomId: code, playerName: name });
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Lobby actions
+    // ═══════════════════════════════════════════════════════
+    function startGame() {
+      const cb = document.getElementById('timer-off-cb');
+      let timer = 0;
+      if (!cb.checked) {
+        timer = parseInt(document.getElementById('timer-input').value);
+        if (isNaN(timer) || timer < 1) timer = 30;
+      }
+      let manualSearchDuration = parseInt(document.getElementById('manual-search-duration-input').value);
+      if (isNaN(manualSearchDuration) || manualSearchDuration < 60) manualSearchDuration = 120;
+      manualSearchDuration = Math.min(manualSearchDuration, 600);
+      socket.emit('start_game', {
+        turnTimer: timer,
+        spectatorHost: document.getElementById('spectator-host-cb').checked,
+        automaticScoring: document.getElementById('auto-score-host-cb').checked,
+        manualSearchDuration
+      });
+    }
+
+    function toggleTimerInput(cb) {
+      const input = document.getElementById('timer-input');
+      if (cb.checked) {
+        if (input.value.trim()) input.dataset.lastValue = input.value;
+        input.disabled = true;
+        input.style.opacity = '0.5';
+      } else {
+        input.value = input.dataset.lastValue || input.value || '30';
+        input.disabled = false;
+        input.style.opacity = '1';
+      }
+    }
+
+    function toggleAutoScoreInput(cb) {
+      const input = document.getElementById('manual-search-duration-input');
+      input.disabled = cb.checked;
+      input.style.opacity = cb.checked ? '0.5' : '1';
+    }
+
+    function renderPlayerListItems(listId) {
+      const list = document.getElementById(listId);
+      if (!list) return;
+      list.innerHTML = '';
+      state.players.forEach(p => {
+        const li = document.createElement('li');
+        const initial = p.name.charAt(0).toUpperCase();
+        const isHost = p.id === state.hostId;
+        const isMe = p.id === state.playerId;
+        const isOffline = p.connected === false;
+        const actionMenuHtml = (state.isHost && !isMe)
+          ? `
+          <div class="player-menu-wrap">
+            <button class="player-menu-btn" type="button" onclick="togglePlayerMenu(event, this)" aria-label="玩家选项" title="玩家选项">⋮</button>
+            <div class="player-menu-dropdown">
+              <button class="player-menu-item text-danger" type="button" onclick="kickPlayer('${p.id}')">踢出玩家</button>
+            </div>
+          </div>
+        `
+          : '';
+        li.innerHTML = `
+      <div class="player-avatar" style="${isOffline ? 'opacity:0.5;' : ''}">${initial}</div>
+      <span style="${isOffline ? 'opacity:0.6; text-decoration:line-through;' : ''}">${p.name}</span>
+      ${isOffline ? '<span class="offline-badge">离线</span>' : ''}
+      ${isHost ? '<span class="host-badge">房主</span>' : ''}
+      ${isMe && !isHost ? '<span class="you-badge">你</span>' : ''}
+      ${actionMenuHtml}
+    `;
+        list.appendChild(li);
+      });
+    }
+
+    function renderLobby() {
+      document.getElementById('lobby-room-code').textContent = state.roomId;
+      document.getElementById('lobby-player-count').textContent =
+        `${state.players.length} 位玩家已加入`;
+
+      renderPlayerListItems('lobby-player-list');
+
+      const hostCtrl = document.getElementById('lobby-host-controls');
+      const waitMsg = document.getElementById('lobby-waiting-msg');
+      if (state.isHost) {
+        hostCtrl.style.display = 'flex';
+        waitMsg.style.display = 'none';
+        document.getElementById('btn-start').disabled = state.players.length < 2;
+      } else {
+        hostCtrl.style.display = 'none';
+        waitMsg.style.display = 'block';
+      }
+    }
+
+    function openPlayersModal() {
+      renderPlayerListItems('modal-player-list');
+      const modal = document.getElementById('players-modal');
+      modal.classList.add('visible');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closePlayersModal() {
+      closeAllPlayerMenus();
+      const modal = document.getElementById('players-modal');
+      modal.classList.remove('visible');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function togglePlayerMenu(event, btnElement) {
+      event.stopPropagation();
+      const wrap = btnElement ? btnElement.closest('.player-menu-wrap') : null;
+      const targetDropdown = wrap ? wrap.querySelector('.player-menu-dropdown') : null;
+      const isCurrentlyOpen = targetDropdown?.classList.contains('active');
+      closeAllPlayerMenus();
+      if (targetDropdown && !isCurrentlyOpen) {
+        targetDropdown.classList.add('active');
+      }
+    }
+
+    function closeAllPlayerMenus() {
+      document.querySelectorAll('.player-menu-dropdown.active').forEach(dropdown => {
+        dropdown.classList.remove('active');
+      });
+    }
+
+    function kickPlayer(targetPlayerId) {
+      closeAllPlayerMenus();
+      if (!state.isHost) return;
+      socket.emit('kick_player', { targetPlayerId });
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Game board rendering (6x6 = 36 cells)
+    // ═══════════════════════════════════════════════════════
+    function buildBoard() {
+      const board = document.getElementById('game-board');
+      board.innerHTML = '';
+      for (let i = 0; i < 36; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell' + (state.grid[i] ? ' filled' : '');
+        cell.textContent = state.grid[i] || '';
+        cell.dataset.index = i;
+        cell.addEventListener('click', () => selectCell(i));
+        board.appendChild(cell);
+      }
+    }
+
+    function updateBoard() {
+      const cells = document.querySelectorAll('#game-board .cell');
+      cells.forEach((cell, i) => {
+        cell.textContent = state.grid[i] || '';
+        cell.className = 'cell' + (state.grid[i] ? ' filled' : '');
+      });
+    }
+
+    function selectCell(index) {
+      if (state.phase !== 'playing') return;
+      if (!state.currentLetter) {
+        toast("等待挑选汉字...");
+        return;
+      }
+      if (state.placedThisTurn) {
+        toast("本回合你已经放置过汉字！");
+        return;
+      }
+      if (state.grid[index]) {
+        toast("该空格已被占据！");
+        return;
+      }
+
+      state.selectedCell = index;
+      placeLetter(state.currentLetter);
+    }
+
+    function placeLetter(letter) {
+      state.grid[state.selectedCell] = letter;
+      state.placedThisTurn = true;
+      updateBoard();
+      toast(`已将汉字“${letter}”放置在第 ${state.selectedCell + 1} 格`);
+      document.getElementById('call-status').innerHTML =
+        `汉字 <span class="highlighted-letter">${letter}</span> 已放置 — 等待其他玩家...`;
+      socket.emit('letter_placed', { grid: state.grid, turnId: state.activeTurnId });
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Called letters log
+    // ═══════════════════════════════════════════════════════
+    function renderCalledLetters(letter = state.currentLetter, calledBy = state.currentLetterCaller) {
+      const valEl = document.getElementById('current-letter-value');
+      const callerEl = document.getElementById('current-letter-caller');
+      if (valEl) valEl.textContent = letter || '—';
+      if (callerEl) callerEl.textContent = calledBy ? `由 ${calledBy} 挑选` : '等待中';
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Turn & Market UI
+    // ═══════════════════════════════════════════════════════
+    function buildMarket() {
+      const grid = document.getElementById('alphabet-grid');
+      const finalContainer = document.getElementById('final-input-container');
+      const refreshInfo = document.getElementById('market-refresh-info');
+
+      if (state.finalTurnActive) {
+        if (grid) grid.style.display = 'none';
+        if (finalContainer) finalContainer.style.display = 'flex';
+        if (refreshInfo) refreshInfo.style.display = 'none';
+        return;
+      }
+
+      if (finalContainer) finalContainer.style.display = 'none';
+      if (!grid) return;
+      grid.style.display = 'grid';
+      grid.classList.remove('inactive');
+      grid.className = 'market-grid';
+      grid.innerHTML = '';
+
+      const isMyTurn = state.currentTurnPlayerId === state.playerId;
+
+      if (Array.isArray(state.market)) {
+        state.market.forEach((item, index) => {
+          const btn = document.createElement('button');
+          btn.className = `market-card tier-${item.tier}`;
+          btn.type = 'button';
+          btn.disabled = !isMyTurn;
+          btn.innerHTML = `
+            <span class="market-card-char">${item.char}</span>
+          `;
+          btn.addEventListener('click', () => {
+            if (isMyTurn) callLetterFromMarket(index, item.char);
+          });
+          grid.appendChild(btn);
+        });
+      }
+
+      if (refreshInfo) {
+        refreshInfo.style.display = 'block';
+        const turnsUntilRefresh = 5 - (state.turnIndex % 5);
+        refreshInfo.textContent = `市场将在 ${turnsUntilRefresh} 回合后刷新`;
+      }
+    }
+
+    function callLetterFromMarket(letterIndex, letter) {
+      socket.emit('call_letter', { letterIndex, letter });
+      document.getElementById('call-panel').classList.remove('visible');
+    }
+
+    function submitFinalCharacterInput() {
+      if (!state.finalTurnActive) return;
+      const input = document.getElementById('final-character-input');
+      const val = (input ? input.value || '' : '').trim();
+      if (!/^[\u4e00-\u9fa5]$/.test(val)) {
+        toast('请输入单个有效汉字（简体中文）。');
+        return;
+      }
+      socket.emit('final_letter_choice', { letter: val });
+      document.getElementById('call-panel').classList.remove('visible');
+      const finalContainer = document.getElementById('final-input-container');
+      if (finalContainer) finalContainer.style.display = 'none';
+      document.getElementById('call-status').innerHTML = `已提交终局汉字“<strong>${val}</strong>” — 等待其他玩家...`;
+    }
+
+    function updateTurnUI(currentPlayerId, playerName, turnIndex, totalTurns) {
+      state.currentTurnPlayerId = currentPlayerId;
+      state.turnIndex = turnIndex;
+      state.totalTurns = totalTurns;
+
+      const badge = document.getElementById('turn-badge');
+      const nameEl = document.getElementById('turn-player-name');
+      const idx = document.getElementById('turn-index');
+      const tot = document.getElementById('turn-total');
+      const callPanel = document.getElementById('call-panel');
+      const callStatus = document.getElementById('call-status');
+
+      idx.textContent = turnIndex + 1;
+      tot.textContent = totalTurns;
+
+      if (state.spectator) {
+        badge.className = 'turn-badge';
+        nameEl.textContent = playerName ? `${playerName} 的回合` : '等待中...';
+        callPanel.classList.add('visible');
+        callStatus.innerHTML = playerName
+          ? `<strong>${playerName}</strong> 正在从市场挑选汉字...`
+          : '观战模式 — 正在观看玩家比赛。';
+        buildMarket();
+        return;
+      }
+
+      const isMyTurn = currentPlayerId === state.playerId;
+
+      if (isMyTurn) {
+        badge.className = 'turn-badge your-turn';
+        nameEl.textContent = '你的回合！';
+        callStatus.innerHTML = '到你的回合了！请从下方市场中选择一个汉字供大家使用：';
+        callPanel.classList.add('visible');
+        buildMarket();
+        toast('到你的回合了，请从市场中选择一个汉字！', 3000);
+      } else {
+        badge.className = 'turn-badge';
+        nameEl.textContent = `${playerName} 的回合`;
+        callStatus.innerHTML = `<strong>${playerName}</strong> 正在从市场挑选汉字...`;
+        callPanel.classList.add('visible');
+        buildMarket();
+      }
+    }
+
+    let reconnectCountdownInterval = null;
+
+    function renderPlacementStatus(statuses = state.placementStatus) {
+      const panel = document.getElementById('action-status-panel');
+      if (panel) {
+        panel.style.display = state.spectator ? 'block' : 'none';
+      }
+      if (!state.spectator) return;
+      const list = document.getElementById('action-status-list');
+      if (!list) return;
+      list.innerHTML = '';
+
+      let hasDisconnected = false;
+
+      state.players.forEach(player => {
+        const status = statuses.find(item => item.playerId === player.id);
+        const isDisconnected = status?.disconnected || player.connected === false;
+        let label = '等待中';
+        let statusClass = 'waiting';
+
+        if (player.spectator) {
+          label = '观战中';
+          statusClass = 'spectator';
+        } else if (isDisconnected) {
+          hasDisconnected = true;
+          const timeLeft = status?.reconnectTimeLeft !== undefined ? status.reconnectTimeLeft : 0;
+          label = `已断线 (${timeLeft}秒)`;
+          statusClass = 'disconnected';
+        } else if (status?.completed) {
+          label = '已完成';
+          statusClass = 'completed';
+        }
+
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${player.name}${player.id === state.playerId ? ' (你)' : ''}</span><strong class="status-${statusClass}">${label}</strong>`;
+        list.appendChild(li);
+      });
+
+      if (hasDisconnected && !reconnectCountdownInterval) {
+        reconnectCountdownInterval = setInterval(() => {
+          let updatedAny = false;
+          (state.placementStatus || []).forEach(status => {
+            if (status.disconnected && status.reconnectTimeLeft > 0) {
+              status.reconnectTimeLeft -= 1;
+              updatedAny = true;
+            }
+          });
+          if (updatedAny) {
+            renderPlacementStatus();
+          } else {
+            clearInterval(reconnectCountdownInterval);
+            reconnectCountdownInterval = null;
+          }
+        }, 1000);
+      } else if (!hasDisconnected && reconnectCountdownInterval) {
+        clearInterval(reconnectCountdownInterval);
+        reconnectCountdownInterval = null;
+      }
+    }
+
+    function renderManualProgress(progress = state.manualProgress) {
+      const panel = document.getElementById('action-status-panel');
+      const list = document.getElementById('action-status-list');
+      if (!panel || !list) return;
+      panel.style.display = 'block';
+      panel.querySelector('h2').textContent = '寻词实时榜';
+      list.innerHTML = '';
+
+      progress.forEach((player, index) => {
+        const li = document.createElement('li');
+        li.className = 'manual-progress-row';
+        li.innerHTML = `
+          <span><b class="manual-progress-rank">${index + 1}</b>${player.name}${player.playerId === state.playerId ? ' (你)' : ''}</span>
+          <strong><span>${player.words} 个词</span><span>${player.score} 分</span><span>${player.ready ? '就绪' : '寻找中'}</span></strong>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Results & Manual Word Hunt
+    // ═══════════════════════════════════════════════════════
+    let manualTimerInterval = null;
+
+    function startManualScoring(deadline, claims = [], ready = false) {
+      state.phase = 'manual_scoring';
+      state.manualDeadline = deadline;
+      state.manualSelected = [];
+      state.manualClaims = claims;
+      state.manualScore = claims.reduce((total, claim) => total + claim.score, 0);
+      state.manualReady = ready;
+      showScreen('manual-scoring');
+      const readyButton = document.getElementById('manual-ready-btn');
+      readyButton.disabled = false;
+      readyButton.textContent = state.manualReady ? '取消准备' : "准备就绪";
+      document.getElementById('manual-ready-status').textContent = state.manualReady ? '已就绪。如需继续寻词请点击“取消准备”。' : '';
+      renderManualBoard();
+      renderManualClaims();
+      clearManualSelection();
+      clearInterval(manualTimerInterval);
+      updateManualTimer();
+      manualTimerInterval = setInterval(updateManualTimer, 250);
+    }
+
+    function toggleManualReady() {
+      if (state.phase !== 'manual_scoring') return;
+      state.manualReady = !state.manualReady;
+      const button = document.getElementById('manual-ready-btn');
+      button.textContent = state.manualReady ? '取消准备' : "准备就绪";
+      document.getElementById('manual-ready-status').textContent = state.manualReady
+        ? '已就绪。如需继续寻词请点击“取消准备”。'
+        : '';
+      socket.emit('manual_ready', { ready: state.manualReady });
+    }
+
+    function updateManualTimer() {
+      const seconds = Math.max(0, Math.ceil((state.manualDeadline - Date.now()) / 1000));
+      const minutes = Math.floor(seconds / 60);
+      const remainder = String(seconds % 60).padStart(2, '0');
+      document.getElementById('manual-timer').textContent = `${minutes}:${remainder}`;
+      if (seconds === 0) clearInterval(manualTimerInterval);
+    }
+
+    function getManualPath(first, second) {
+      const firstRow = Math.floor(first / 6);
+      const secondRow = Math.floor(second / 6);
+      const firstColumn = first % 6;
+      const secondColumn = second % 6;
+      const path = [];
+
+      if (firstRow === secondRow) {
+        const step = secondColumn >= firstColumn ? 1 : -1;
+        for (let column = firstColumn; ; column += step) {
+          path.push(firstRow * 6 + column);
+          if (column === secondColumn) break;
+        }
+      } else if (firstColumn === secondColumn) {
+        const step = secondRow >= firstRow ? 1 : -1;
+        for (let row = firstRow; ; row += step) {
+          path.push(row * 6 + firstColumn);
+          if (row === secondRow) break;
+        }
+      }
+
+      return path.length <= 6 ? path : [];
+    }
+
+    function selectManualCell(index) {
+      if (state.phase !== 'manual_scoring' || state.manualReady) return;
+      if (!state.grid[index]) return;
+      if (state.manualSelected.includes(index)) {
+        if (state.manualSelected.length === 1) {
+          state.manualSelected = [];
+        } else if (index === state.manualSelected[0]) {
+          state.manualSelected = state.manualSelected.slice(1);
+        } else if (index === state.manualSelected[state.manualSelected.length - 1]) {
+          state.manualSelected = state.manualSelected.slice(0, -1);
+        } else {
+          toast('不能从词语中间移除汉字。');
+        }
+        renderManualBoard();
+        updateManualSelectionBar();
+        return;
+      }
+
+      if (state.manualSelected.length === 0) {
+        state.manualSelected = [index];
+      } else if (state.manualSelected.length === 1) {
+        const path = getManualPath(state.manualSelected[0], index);
+        state.manualSelected = path.length ? path : [index];
+      } else if (index === state.manualSelected[state.manualSelected.length - 1]) {
+        state.manualSelected.pop();
+      } else {
+        const first = state.manualSelected[0];
+        const last = state.manualSelected[state.manualSelected.length - 1];
+        const pathFromFirst = getManualPath(first, index);
+        const pathFromLast = getManualPath(last, index);
+        if (pathFromLast.length === 2) {
+          state.manualSelected = state.manualSelected.concat(index);
+        } else if (pathFromFirst.length === 2) {
+          state.manualSelected = [index].concat(state.manualSelected);
+        } else {
+          state.manualSelected = [index];
+        }
+      }
+
+      renderManualBoard();
+      updateManualSelectionBar();
+    }
+
+    function renderManualBoard() {
+      const board = document.getElementById('manual-board');
+      if (!board) return;
+      board.innerHTML = '';
+      const foundPositions = new Set(state.manualClaims.flatMap(claim => claim.positions));
+      state.grid.forEach((letter, index) => {
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = 'manual-cell';
+        if (foundPositions.has(index)) cell.classList.add('manual-found');
+        if (state.manualSelected.includes(index)) cell.classList.add('manual-selected');
+        cell.textContent = letter || '';
+        cell.setAttribute('aria-label', `汉字 ${letter || '空'}, 第 ${index + 1} 格`);
+        cell.addEventListener('click', () => selectManualCell(index));
+        board.appendChild(cell);
+      });
+    }
+
+    function updateManualSelectionBar() {
+      const word = state.manualSelected.map(index => state.grid[index] || '').join('');
+      document.getElementById('manual-selection-word').textContent = word || '点击汉字开始选词';
+      document.getElementById('manual-confirm-btn').disabled = state.manualSelected.length < 3;
+    }
+
+    function clearManualSelection() {
+      state.manualSelected = [];
+      renderManualBoard();
+      updateManualSelectionBar();
+    }
+
+    function confirmManualWord() {
+      if (state.manualReady || state.manualSelected.length < 3) return;
+      document.getElementById('manual-confirm-btn').disabled = true;
+      socket.emit('claim_word', {
+        start: state.manualSelected[0],
+        end: state.manualSelected[state.manualSelected.length - 1]
+      });
+    }
+
+    function renderManualClaims() {
+      const list = document.getElementById('manual-claims-list');
+      list.innerHTML = '';
+      if (!state.manualClaims.length) {
+        list.innerHTML = '<p class="manual-empty">尚未找到词语。</p>';
+        return;
+      }
+      state.manualClaims.forEach(claim => {
+        const item = document.createElement('div');
+        item.className = 'manual-claim';
+        item.innerHTML = `<strong>${claim.word}</strong><span>+${claim.score}</span>`;
+        list.appendChild(item);
+      });
+      document.getElementById('manual-score').textContent = state.manualScore;
+    }
+
+    function renderDefinitionModal(word, meanings) {
+      const modal = document.getElementById('definition-modal');
+      const title = document.getElementById('definition-word');
+      const content = document.getElementById('definition-content');
+      title.textContent = word;
+      content.innerHTML = '';
+
+      if (!meanings || !meanings.length) {
+        content.innerHTML = '<div class="definition-empty">未在词典中找到该词语的释义。</div>';
+        modal.classList.add('visible');
+        modal.setAttribute('aria-hidden', 'false');
+        return;
+      }
+
+      meanings.forEach((meaning) => {
+        const block = document.createElement('div');
+        block.className = 'definition-meaning';
+        const label = document.createElement('strong');
+        label.textContent = meaning.partOfSpeech;
+        block.appendChild(label);
+
+        const list = document.createElement('ul');
+        meaning.definitions.forEach((definition) => {
+          const item = document.createElement('li');
+          item.textContent = definition;
+          list.appendChild(item);
+        });
+        block.appendChild(list);
+        content.appendChild(block);
+      });
+
+      modal.classList.add('visible');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeDefinitionModal() {
+      const modal = document.getElementById('definition-modal');
+      modal.classList.remove('visible');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function openHowToPlay() {
+      const modal = document.getElementById('how-to-play-modal');
+      modal.classList.add('visible');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeHowToPlay() {
+      const modal = document.getElementById('how-to-play-modal');
+      modal.classList.remove('visible');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function openWordDefinition(word, meanings) {
+      const modal = document.getElementById('definition-modal');
+      renderDefinitionModal(word, meanings);
+    }
+
+    function renderResults(leaderboard) {
+      const lb = document.getElementById('leaderboard');
+      lb.innerHTML = '';
+
+      const clearBoardHighlights = (board) => {
+        if (!board) return;
+        board.querySelectorAll('.scoring-cell').forEach(cell => {
+          cell.classList.remove('word-highlighted');
+        });
+      };
+
+      const highlightBoardCells = (board, positions) => {
+        if (!board) return;
+        clearBoardHighlights(board);
+        positions.forEach(index => {
+          const cell = board.querySelector(`.scoring-cell[data-index="${index}"]`);
+          if (cell) cell.classList.add('word-highlighted');
+        });
+      };
+
+      leaderboard.forEach((entry, i) => {
+        const row = document.createElement('div');
+        row.className = 'lb-row';
+        row.style.animationDelay = `${0.05 + i * 0.06}s`;
+        row.style.flexDirection = 'column';
+        row.style.alignItems = 'stretch';
+        row.style.cursor = 'pointer';
+
+        const wordCount = entry.words ? entry.words.length : 0;
+
+        let boardHtml = '<div class="score-board-grid" style="display:grid; grid-template-columns: repeat(6,1fr); gap:6px; max-width:300px; margin: 0 auto 1.25rem;">';
+        if (entry.board) {
+          entry.board.forEach((cell, index) => {
+            boardHtml += `<div class="scoring-cell${cell ? ' filled' : ''}" data-index="${index}" style="aspect-ratio:1; display:flex; align-items:center; justify-content:center; font-family:'DM Mono', monospace; font-size:1.1rem; border:1.5px solid rgba(200,169,110,0.5); border-radius:4px;">${cell || ''}</div>`;
+          });
+        }
+        boardHtml += '</div>';
+
+        const wordsHtml = document.createElement('div');
+        wordsHtml.className = 'word-chips';
+        wordsHtml.style.display = 'flex';
+        wordsHtml.style.flexWrap = 'wrap';
+        wordsHtml.style.gap = '0.4rem';
+        wordsHtml.style.justifyContent = 'center';
+
+        if (entry.words && entry.words.length > 0) {
+          entry.words.forEach(w => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'word-chip';
+            chip.style.display = 'inline-flex';
+            chip.style.alignItems = 'center';
+            chip.style.background = w.manual === true ? 'var(--gold)' : 'var(--forest)';
+            chip.style.color = w.manual === true ? 'var(--ink)' : 'var(--paper)';
+            chip.style.borderRadius = '3px';
+            chip.style.padding = '0.25rem 0.6rem';
+            chip.style.fontSize = '0.82rem';
+            chip.textContent = w.word;
+
+            const score = document.createElement('span');
+            score.textContent = w.manual === false ? `+${w.score} 自动` : `+${w.score}`;
+            score.style.opacity = '0.7';
+            score.style.fontSize = '0.72rem';
+            score.style.marginLeft = '0.25rem';
+            chip.appendChild(score);
+
+            chip.addEventListener('click', async (event) => {
+              event.stopPropagation();
+              openWordDefinition(w.word, w.meanings);
+            });
+            wordsHtml.appendChild(chip);
+          });
+        } else {
+          const empty = document.createElement('span');
+          empty.style.fontSize = '0.8rem';
+          empty.style.color = 'var(--slate)';
+          empty.style.fontStyle = 'italic';
+          empty.textContent = '未找到有效词语';
+          wordsHtml.appendChild(empty);
+        }
+
+        row.innerHTML = `
+          <div style="display:flex; align-items:center; gap:0.75rem; width:100%;">
+            <div class="lb-rank">${i + 1}</div>
+            <div class="lb-name-wrap" style="flex:1;">
+              <div class="lb-name">${entry.name}${entry.name === state.playerName ? ' <em style="font-size:0.75rem;color:var(--slate)">(你)</em>' : ''}</div>
+              <div class="lb-words">已找到 ${wordCount} 个词 <span style="opacity:0.6;font-size:0.7rem;margin-left:0.25rem;">(点击查看详情)</span></div>
+            </div>
+            <div class="lb-score" style="font-family:'Playfair Display', serif; font-size:1.3rem; font-weight:700;">${entry.score} 分</div>
+          </div>
+          <div class="lb-details" style="display:none; margin-top:1rem; padding-top:1rem; border-top:1px dashed rgba(200,169,110,0.5); width:100%;">
+            <p style="font-size:0.75rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); text-align:center; margin-bottom:0.75rem;">终局棋盘</p>
+            ${boardHtml}
+            <p style="font-size:0.75rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); text-align:center; margin-bottom:0.5rem;">找到的词语</p>
+          </div>
+        `;
+
+        row.querySelector('.lb-details').appendChild(wordsHtml);
+
+        const board = row.querySelector('.score-board-grid');
+        const wordChips = [...row.querySelectorAll('.word-chip')];
+
+        wordChips.forEach((chip, chipIndex) => {
+          const w = entry.words[chipIndex];
+          if (!w) return;
+          const positions = Array.isArray(w.positions) ? w.positions : [];
+
+          chip.addEventListener('mouseenter', () => highlightBoardCells(board, positions));
+          chip.addEventListener('mouseleave', () => clearBoardHighlights(board));
+          chip.addEventListener('focus', () => highlightBoardCells(board, positions));
+          chip.addEventListener('blur', () => clearBoardHighlights(board));
+        });
+
+        row.addEventListener('click', () => {
+          const details = row.querySelector('.lb-details');
+          details.style.display = details.style.display === 'none' ? 'block' : 'none';
+        });
+
+        lb.appendChild(row);
+      });
+
+      document.getElementById('definition-modal').addEventListener('click', (event) => {
+        if (event.target.id === 'definition-modal') closeDefinitionModal();
+      });
+      document.getElementById('how-to-play-modal').addEventListener('click', (event) => {
+        if (event.target.id === 'how-to-play-modal') closeHowToPlay();
+      });
+      document.getElementById('players-modal').addEventListener('click', (event) => {
+        if (event.target.id === 'players-modal') closePlayersModal();
+      });
+
+      // ensure legacy 'my words' is hidden since it's redundant now
+      document.getElementById('my-words-wrap').style.display = 'none';
+
+      showScreen('results');
+    }
+
+    function goHome() {
+      clearSession();
+      state = {
+        playerId: null,
+        playerName: null,
+        roomId: null,
+        isHost: false,
+        hostId: null,
+        phase: 'landing',
+        players: [],
+        calledLetters: [],
+        currentTurnPlayerId: null,
+        turnIndex: 0,
+        totalTurns: 0,
+        currentLetter: null,
+        activeTurnId: null,
+        spectator: false,
+        placementStatus: [],
+        grid: Array(36).fill(''),
+        selectedCell: null,
+        placedThisTurn: false,
+        finalTurnActive: false,
+        manualSelected: [],
+        manualClaims: [],
+        manualScore: 0,
+        manualDeadline: null,
+        manualProgress: [],
+        manualReady: false,
+      };
+      showScreen('landing');
+    }
+
+    function leaveRoom() {
+      if (state.phase === 'playing') {
+        if (!confirm('确定要离开游戏吗？')) return;
+      }
+      if (state.roomId) socket.emit('leave_room');
+      goHome();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Socket events & Connection lifecycle
+    // ═══════════════════════════════════════════════════════
+    socket.on('connect', () => {
+      hideReconnectBanner();
+      const sess = getSession();
+      if (sess && sess.roomId && sess.playerId) {
+        state.roomId = sess.roomId;
+        state.playerId = sess.playerId;
+        state.playerName = sess.playerName;
+        socket.emit('rejoin_room', { roomId: sess.roomId, playerId: sess.playerId, playerName: sess.playerName });
+      }
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+      showReconnectBanner();
+    });
+
+    socket.on('room_created', ({ roomId, playerId, playerName }) => {
+      state.playerId = playerId;
+      state.roomId = roomId;
+      state.playerName = playerName || state.playerName;
+      state.isHost = true;
+      saveSession(roomId, playerId, state.playerName);
+    });
+
+    socket.on('room_joined', ({ roomId, playerId, playerName }) => {
+      state.playerId = playerId;
+      state.roomId = roomId;
+      state.playerName = playerName || state.playerName;
+      saveSession(roomId, playerId, state.playerName);
+    });
+
+    socket.on('rejoined_success', (data) => {
+      hideReconnectBanner();
+      state.playerId = data.playerId;
+      state.playerName = data.playerName;
+      state.roomId = data.roomId;
+      state.isHost = data.isHost;
+      state.hostId = data.hostId;
+      state.phase = data.phase;
+      state.spectator = !!data.spectator;
+      state.players = data.players;
+      state.grid = data.grid || Array(25).fill('');
+      state.calledLetters = data.calledLetters || [];
+      state.currentLetter = data.currentLetter;
+      state.currentLetterCaller = data.currentLetterCaller;
+      state.activeTurnId = data.activeTurnId || null;
+      state.placedThisTurn = data.placedThisTurn || false;
+      state.finalTurnActive = !!data.finalTurnStarted;
+      state.placementStatus = data.placementStatus || [];
+
+      saveSession(data.roomId, data.playerId, data.playerName);
+      toast(`已重新连接到游戏！`, 3000);
+
+      if (state.phase === 'lobby') {
+        showScreen('lobby');
+        renderLobby();
+      } else if (state.phase === 'playing') {
+        showScreen('game');
+        document.getElementById('screen-game').classList.toggle('spectator-mode', state.spectator);
+        document.getElementById('btn-game-players').style.display = state.isHost ? 'inline-flex' : 'none';
+        buildBoard();
+        renderPlacementStatus();
+        renderCalledLetters(state.currentLetter, state.currentLetterCaller);
+
+        if (state.finalTurnActive) {
+          const badge = document.getElementById('turn-badge');
+          const nameEl = document.getElementById('turn-player-name');
+          const callStatus = document.getElementById('call-status');
+          const alphabetGrid = document.getElementById('alphabet-grid');
+          if (state.spectator) {
+            badge.className = 'turn-badge';
+            nameEl.textContent = '终局汉字回合';
+            callStatus.textContent = '观战模式 — 正在观看终局汉字选择。';
+            document.getElementById('call-panel').classList.remove('visible');
+          } else {
+            badge.className = 'turn-badge your-turn';
+            nameEl.textContent = '终局汉字';
+            callStatus.innerHTML = '最终回合！请选择或输入你的最后一个汉字。';
+            document.getElementById('call-panel').classList.add('visible');
+            buildMarket();
+          }
+        } else {
+          updateTurnUI(data.currentTurnPlayerId, data.currentTurnPlayerName, data.turnIndex, data.totalTurns);
+          startVisualTimer(data.turnTimer);
+
+          if (data.letterCalledThisTurn && data.currentLetter) {
+            if (state.placedThisTurn) {
+              document.getElementById('call-status').innerHTML = `汉字 <span class="highlighted-letter">${state.currentLetter}</span> 已放置 — 等待其他玩家...`;
+              document.getElementById('call-panel').classList.remove('visible');
+            } else {
+              document.getElementById('call-status').innerHTML = `<strong>${state.currentLetterCaller}</strong> 选择了汉字 <span class="highlighted-letter">${state.currentLetter}</span> — 请将其放置在你的棋盘上！`;
+              document.getElementById('call-panel').classList.remove('visible');
+            }
+          }
+        }
+      } else if (state.phase === 'manual_scoring') {
+        state.manualProgress = data.manualProgress || [];
+        if (state.spectator) {
+          showScreen('game');
+          document.getElementById('screen-game').classList.add('spectator-mode');
+          document.getElementById('call-panel').classList.remove('visible');
+          document.getElementById('turn-player-name').textContent = '终局寻词';
+          renderManualProgress();
+        } else {
+          startManualScoring(data.manualScoringDeadline, data.manualClaims || [], data.manualReady === true);
+        }
+      } else if (state.phase === 'scoring' && data.leaderboard) {
+        renderResults(data.leaderboard);
+      }
+    });
+
+    socket.on('rejoin_failed', ({ message }) => {
+      hideReconnectBanner();
+      clearSession();
+      if (state.phase !== 'lobby' && state.phase !== 'landing') {
+        toast(message || '会话已过期', 4000);
+      }
+    });
+
+    socket.on('player_disconnected', ({ playerId, playerName, players, reconnectTimeLeft }) => {
+      state.players = players;
+      if (state.phase === 'lobby') renderLobby();
+      renderPlayerListItems('modal-player-list');
+      if (playerName !== state.playerName) {
+        const timeStr = reconnectTimeLeft ? ` (剩余 ${reconnectTimeLeft} 秒)` : '';
+        toast(`${playerName} 已断开连接${timeStr}`, 4000);
+      }
+    });
+
+    socket.on('player_reconnected', ({ playerId, playerName, players }) => {
+      state.players = players;
+      if (state.phase === 'lobby') renderLobby();
+      renderPlayerListItems('modal-player-list');
+      if (playerName !== state.playerName) {
+        toast(`${playerName} 已重新连接！`, 3000);
+      }
+    });
+
+    socket.on('room_state', (room) => {
+      state.players = room.players;
+      state.hostId = room.hostId;
+      state.isHost = state.playerId === room.hostId;
+      showScreen('lobby');
+      renderLobby();
+      renderPlayerListItems('modal-player-list');
+    });
+
+    socket.on('player_left', ({ playerName, players }) => {
+      state.players = players;
+      if (state.phase === 'lobby') renderLobby();
+      renderPlayerListItems('modal-player-list');
+      toast(`${playerName} 离开了房间`);
+    });
+
+    socket.on('kicked_from_room', ({ message }) => {
+      clearSession();
+      closePlayersModal();
+      goHome();
+      showError('landing-error', message || '你已被踢出房间。');
+    });
+
+    socket.on('player_kicked', ({ kickedPlayerName, players }) => {
+      state.players = players;
+      if (state.phase === 'lobby') renderLobby();
+      renderPlayerListItems('modal-player-list');
+      toast(`${kickedPlayerName} 已被房主踢出房间。`);
+    });
+
+    socket.on('host_changed', ({ newHostId, newHostName }) => {
+      state.hostId = newHostId;
+      state.isHost = state.playerId === newHostId;
+      if (state.phase === 'lobby') renderLobby();
+      if (state.phase === 'playing') {
+        document.getElementById('btn-game-players').style.display = state.isHost ? 'inline-flex' : 'none';
+      }
+      renderPlayerListItems('modal-player-list');
+      toast(`${newHostName} 成为了新房主`);
+    });
+
+
+    let countdownInterval = null;
+    function startVisualTimer(seconds) {
+      clearInterval(countdownInterval);
+      const display = document.getElementById('timer-display');
+      if (seconds <= 0) {
+        display.style.display = 'none';
+        return;
+      }
+      display.style.display = 'block';
+      let left = seconds;
+      display.textContent = left + '秒';
+      countdownInterval = setInterval(() => {
+        left--;
+        if (left <= 0) {
+          clearInterval(countdownInterval);
+          display.textContent = '0秒';
+        } else {
+          display.textContent = left + '秒';
+        }
+      }, 1000);
+    }
+
+    socket.on('game_started', ({ turnOrder, currentTurn, totalTurns, turnTimer, spectatorHost, market }) => {
+      state.phase = 'playing';
+      state.spectator = state.isHost && spectatorHost === true;
+      state.calledLetters = [];
+      state.currentLetter = null;
+      state.currentLetterCaller = null;
+      state.activeTurnId = null;
+      state.grid = Array(36).fill('');
+      state.market = market || [];
+      state.totalTurns = totalTurns;
+      state.finalTurnActive = false;
+
+      showScreen('game');
+      document.getElementById('screen-game').classList.toggle('spectator-mode', state.spectator);
+      document.getElementById('btn-game-players').style.display = state.isHost ? 'inline-flex' : 'none';
+      buildBoard();
+      renderPlacementStatus();
+      renderCalledLetters();
+      updateTurnUI(currentTurn.playerId, currentTurn.playerName, 0, totalTurns);
+      startVisualTimer(turnTimer);
+    });
+
+    socket.on('market_refreshed', ({ market, message }) => {
+      if (market) state.market = market;
+      toast(message || '市场已刷新！', 3000);
+      buildMarket();
+    });
+
+    socket.on('final_turn_started', ({ turnTimer, message }) => {
+      state.finalTurnActive = true;
+      state.placedThisTurn = false;
+      if (state.spectator) {
+        document.getElementById('turn-badge').className = 'turn-badge';
+        document.getElementById('turn-player-name').textContent = '终局汉字回合';
+        document.getElementById('call-status').textContent = '观战模式 — 正在观看终局汉字选择。';
+        document.getElementById('call-panel').classList.remove('visible');
+        return;
+      }
+      const badge = document.getElementById('turn-badge');
+      const nameEl = document.getElementById('turn-player-name');
+      const callStatus = document.getElementById('call-status');
+
+      badge.className = 'turn-badge your-turn';
+      nameEl.textContent = '终局汉字';
+      callStatus.innerHTML = '<strong>最终回合（第36回合）：</strong>输入任意汉字填入你的最后一个空格。';
+      document.getElementById('call-panel').classList.add('visible');
+      buildMarket();
+      toast('最终回合：输入任意汉字作为最后一格！', 4000);
+      startVisualTimer(turnTimer);
+    });
+
+    socket.on('final_letter_confirmed', ({ playerId, playerName, letter, grid, remaining, allChosen }) => {
+      if (playerId === state.playerId && Array.isArray(grid)) {
+        state.grid = grid.slice();
+        updateBoard();
+      }
+      if (playerId !== state.playerId) {
+        toast(`${playerName} 选择了汉字“${letter}”作为最后一格`, 2200);
+      }
+      if (remaining !== undefined && remaining > 0) {
+        document.getElementById('call-status').innerHTML = `还剩 ${remaining} 位玩家尚未提交最终汉字。`;
+      }
+      if (allChosen) {
+        document.getElementById('call-status').innerHTML = '所有玩家已提交最终汉字 — 正在结算...';
+      }
+    });
+
+    socket.on('manual_scoring_started', ({ deadline, progress }) => {
+      state.manualProgress = progress || [];
+      if (state.spectator) {
+        state.phase = 'manual_scoring';
+        showScreen('game');
+        document.getElementById('screen-game').classList.add('spectator-mode');
+        document.getElementById('call-panel').classList.remove('visible');
+        document.getElementById('turn-player-name').textContent = '终局寻词';
+        document.getElementById('call-status').textContent = '观战中 — 正在观看玩家寻词...';
+        renderManualProgress();
+      } else {
+        state.grid = state.grid.slice();
+        startManualScoring(deadline);
+      }
+    });
+
+    socket.on('manual_scoring_progress', ({ progress }) => {
+      state.manualProgress = progress || [];
+      if (state.spectator && state.phase === 'manual_scoring') {
+        renderManualProgress();
+      }
+    });
+
+    socket.on('word_claim_result', ({ valid, message, word, total }) => {
+      const feedback = document.getElementById('manual-feedback');
+      if (!valid) {
+        feedback.textContent = message;
+        feedback.className = 'manual-feedback invalid';
+        document.getElementById('manual-confirm-btn').disabled = state.manualSelected.length < 3;
+        return;
+      }
+
+      state.manualClaims.push(word);
+      state.manualScore = total;
+      feedback.textContent = `有效词语“${word.word}”：+${word.score} 分`;
+      feedback.className = 'manual-feedback valid';
+      renderManualClaims();
+      clearManualSelection();
+    });
+
+    socket.on('letter_called', ({ letter, calledBy, calledLetters, turnsLeft, turnTimer, market }) => {
+      if (market) state.market = market;
+      state.calledLetters = calledLetters;
+      state.currentLetter = letter;
+      state.activeTurnId = calledLetters?.[calledLetters.length - 1]?.turnId || null;
+      state.currentLetterCaller = calledBy;
+      state.placedThisTurn = false;
+      renderCalledLetters(letter, calledBy);
+      document.getElementById('call-status').innerHTML =
+        `<strong>${calledBy}</strong> 选择了汉字 <span class="highlighted-letter">${letter}</span> — 请将其放置在你的棋盘上！`;
+      const grid = document.getElementById('alphabet-grid');
+      if (grid) grid.style.display = 'none';
+      if (calledBy !== state.playerName) {
+        toast(`${calledBy} 选择了“${letter}”`);
+      }
+
+      document.getElementById('turn-badge').className = 'turn-badge';
+      document.getElementById('turn-player-name').textContent = '等待玩家放置汉字...';
+      document.getElementById('call-panel').classList.remove('visible');
+      startVisualTimer(turnTimer);
+    });
+
+    socket.on('placement_status', ({ turnId, players }) => {
+      if (turnId && turnId !== state.activeTurnId) return;
+      state.placementStatus = players || [];
+      renderPlacementStatus();
+    });
+
+    socket.on('next_turn', ({ playerId, playerName, turnIndex, totalTurns, turnTimer, market }) => {
+      if (market) state.market = market;
+      state.currentLetter = null;
+      state.currentLetterCaller = null;
+      state.activeTurnId = null;
+      renderCalledLetters();
+      updateTurnUI(playerId, playerName, turnIndex, totalTurns);
+      startVisualTimer(turnTimer);
+    });
+
+    socket.on('placement_applied', ({ turnId, grid }) => {
+      if (!Array.isArray(grid)) return;
+      state.grid = grid.slice();
+      state.placedThisTurn = true;
+      updateBoard();
+      document.getElementById('call-status').innerHTML = '系统已自动放置汉字 — 等待其他玩家...';
+      document.getElementById('call-panel').classList.remove('visible');
+    });
+
+    socket.on('force_place', ({ letter }) => {
+      if (!state.placedThisTurn) toast('时间到！系统自动为你放置汉字。', 4000);
+    });
+
+    socket.on('game_over', ({ leaderboard }) => {
+      state.finalTurnActive = false;
+      clearInterval(manualTimerInterval);
+      clearSession();
+      renderResults(leaderboard);
+    });
+
+    socket.on('error', ({ message, rollback, grid }) => {
+      if (rollback && Array.isArray(grid)) {
+        state.grid = grid.slice();
+        state.placedThisTurn = false;
+        updateBoard();
+      }
+      const screen = document.querySelector('.screen.active')?.id;
+      if (screen === 'screen-landing') showError('landing-error', message);
+      else if (screen === 'screen-lobby') showError('lobby-error', message);
+      else toast(message, 3500);
+    });
+
+    // Allow Enter key on landing inputs
+    document.getElementById('create-name').addEventListener('keydown', e => { if (e.key === 'Enter') createRoom(); });
+    document.getElementById('join-code').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
+    document.getElementById('join-name').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        closeHowToPlay();
+        closeDefinitionModal();
+        closePlayersModal();
+      }
+    });
+
+    // Auto-uppercase room code input
+    document.getElementById('join-code').addEventListener('input', e => {
+      e.target.value = e.target.value.toUpperCase();
+    });
+
+    // Close open player menus on outside click
+    document.addEventListener('click', closeAllPlayerMenus);
+
+    loadChangelog();
+  </script>
+</body>
+
+</html>
