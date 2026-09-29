@@ -112,40 +112,49 @@ function emitPlacementStatus(roomId, room) {
 }
 
 // ── Local dictionary & Chinese Rarity Pools ────────────────────
-const definitions = JSON.parse(
-  fs.readFileSync(path.join(__dirname, 'definitions.json'), 'utf8')
+const dictionaryEntries = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'chengyu_dictionary.json'), 'utf8')
 );
 
 const DICTIONARY = new Map();
-const charFrequency = {};
 
-definitions.forEach(item => {
-  if (!item.word || typeof item.word !== 'string') return;
-  const word = item.word.trim();
+dictionaryEntries.forEach(item => {
+  if (!item.characters || typeof item.characters !== 'string') return;
+  const word = item.characters.trim();
   if (word.length >= 3 && word.length <= 6 && /^[\u4e00-\u9fa5]+$/.test(word)) {
     if (!DICTIONARY.has(word)) {
       DICTIONARY.set(word, []);
     }
-    const defStr = item.pinyin ? `[${item.pinyin}] ${item.explanation}` : item.explanation;
+    const meaning = item.meaning_cn || item.meaning_en || '';
+    const defStr = item.pinyin ? `[${item.pinyin}] ${meaning}` : meaning;
     DICTIONARY.get(word).push(defStr);
-  }
-
-  for (const char of word) {
-    if (/^[\u4e00-\u9fa5]$/.test(char)) {
-      charFrequency[char] = (charFrequency[char] || 0) + 1;
-    }
   }
 });
 
-const sortedChars = Object.keys(charFrequency).sort((a, b) => charFrequency[b] - charFrequency[a]);
+const characterPoolData = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'character_pools.json'), 'utf8')
+);
+const COMMON_CHARS = characterPoolData.pools?.COMMON;
+const UNCOMMON_CHARS = characterPoolData.pools?.UNCOMMON;
+const RARE_CHARS = characterPoolData.pools?.RARE;
 
-const COMMON_CHARS = sortedChars.filter(c => charFrequency[c] >= 10);
-const UNCOMMON_CHARS = sortedChars.filter(c => charFrequency[c] >= 3 && charFrequency[c] < 10);
-const RARE_CHARS = sortedChars.filter(c => charFrequency[c] < 3);
-
-if (COMMON_CHARS.length === 0) COMMON_CHARS.push('一', '人', '不', '大', '国', '中', '生');
-if (UNCOMMON_CHARS.length === 0) UNCOMMON_CHARS.push('鹤', '馨', '璀', '璨');
-if (RARE_CHARS.length === 0) RARE_CHARS.push('龘', '靐', '鱻');
+const characterPoolDefinitions = [
+  ['COMMON', COMMON_CHARS, 12],
+  ['UNCOMMON', UNCOMMON_CHARS, 6],
+  ['RARE', RARE_CHARS, 2]
+];
+const seenPoolCharacters = new Set();
+for (const [tier, pool, minimumSize] of characterPoolDefinitions) {
+  if (!Array.isArray(pool) || pool.length < minimumSize || characterPoolData.counts?.[tier] !== pool.length) {
+    throw new Error(`Invalid ${tier} character pool in character_pools.json.`);
+  }
+  for (const character of pool) {
+    if (typeof character !== 'string' || !/^[\u4e00-\u9fa5]$/.test(character) || seenPoolCharacters.has(character)) {
+      throw new Error(`Invalid or duplicate character in ${tier} pool in character_pools.json.`);
+    }
+    seenPoolCharacters.add(character);
+  }
+}
 
 function getRandomCharFromPool(pool, excludeSet = new Set()) {
   const candidates = pool.filter(c => !excludeSet.has(c));
