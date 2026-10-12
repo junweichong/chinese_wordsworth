@@ -1,19 +1,20 @@
 {
   "name": "wordsworth-game",
   "version": "1.0.0",
-  "description": "Multiplayer Wordsworth word game",
+  "description": "Multiplayer room and 5x5 board experience",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "build:components": "node scripts/build-character-components.js",
+    "test": "node --test"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
     "dotenv": "^17.4.2",
     "express": "^4.18.2",
     "pg": "^8.23.0",
-    "socket.io": "^4.7.2",
-    "wordnet-db": "^3.1.14"
+    "socket.io": "^4.7.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

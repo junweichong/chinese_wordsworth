@@ -404,13 +404,6 @@
             color: var(--gold-bright);
         }
 
-        .scoring-cell.word-highlighted {
-            background: var(--gold) !important;
-            color: var(--bg-dark) !important;
-            font-weight: 700;
-            box-shadow: 0 0 10px rgba(200, 169, 110, 0.8);
-        }
-
         .word-chips {
             display: flex;
             flex-wrap: wrap;
@@ -425,58 +418,9 @@
             border-radius: 4px;
             padding: 0.25rem 0.6rem;
             font-size: 0.8rem;
-            cursor: pointer;
             display: inline-flex;
             align-items: center;
             gap: 0.3rem;
-            transition: background 0.15s;
-        }
-
-        .word-chip:hover {
-            background: var(--forest-light);
-            border-color: var(--gold);
-        }
-
-        /* Definition Sub-Modal */
-        #def-modal {
-            z-index: 300;
-        }
-
-        .def-card {
-            background: var(--card-bg);
-            border: 1px solid var(--gold);
-            border-radius: 10px;
-            max-width: 450px;
-            width: 100%;
-            padding: 1.5rem;
-        }
-
-        .def-word {
-            font-family: 'Playfair Display', serif;
-            color: var(--gold);
-            font-size: 1.5rem;
-            margin-bottom: 0.75rem;
-            text-transform: uppercase;
-        }
-
-        .def-list {
-            max-height: 250px;
-            overflow-y: auto;
-            font-size: 0.85rem;
-            line-height: 1.5;
-            color: var(--paper);
-        }
-
-        .def-meaning {
-            margin-bottom: 0.75rem;
-        }
-
-        .def-meaning strong {
-            color: var(--slate);
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            display: block;
-            margin-bottom: 0.2rem;
         }
     </style>
 </head>
@@ -556,15 +500,6 @@
                 </div>
                 <div id="modal-leaderboard" class="leaderboard-list"></div>
             </div>
-        </div>
-    </div>
-
-    <!-- Definition Sub-Modal -->
-    <div id="def-modal" class="modal-backdrop">
-        <div class="def-card">
-            <h3 id="def-word-title" class="def-word">词语</h3>
-            <div id="def-body" class="def-list"></div>
-            <button class="btn" style="width: 100%; margin-top: 1rem;" onclick="closeDefModal()">关闭</button>
         </div>
     </div>
 
@@ -688,7 +623,7 @@
                     lettersLog.textContent = '未记录到汉字。';
                 }
 
-                // Render leaderboard with interactive board tile highlighting & dictionary definition modals
+                // Render saved scores and boards.
                 renderLeaderboardModal(replay.leaderboard_data);
 
                 document.getElementById('replay-modal').classList.add('active');
@@ -718,21 +653,15 @@
 
                 if (entry.words && entry.words.length > 0) {
                     entry.words.forEach(w => {
-                        const chip = document.createElement('button');
+                        const chip = document.createElement('span');
                         chip.className = 'word-chip';
                         if (w.manual === true) {
                             chip.style.background = 'var(--gold)';
                             chip.style.color = 'var(--bg-dark)';
                         }
-                        const scoreLabel = w.manual === false ? `+${w.score} 自动` : `+${w.score}`;
-                        chip.innerHTML = `${w.word.toUpperCase()} <span style="opacity:0.7; font-size:0.7rem;">${scoreLabel}</span>`;
-
-                        const positions = Array.isArray(w.positions) ? w.positions : [];
-                        const gridEl = card;
-
-                        chip.addEventListener('mouseenter', () => highlightGridCells(card, positions));
-                        chip.addEventListener('mouseleave', () => clearGridHighlights(card));
-                        chip.addEventListener('click', () => openDefModal(w.word, w.meanings));
+                        const scoreLabel = document.createElement('small');
+                        scoreLabel.textContent = w.manual === false ? `+${w.score} 自动` : `+${w.score}`;
+                        chip.append(document.createTextNode(w.word), scoreLabel);
 
                         wordsDiv.appendChild(chip);
                     });
@@ -753,43 +682,6 @@
                 card.appendChild(wordsDiv);
                 lbContainer.appendChild(card);
             });
-        }
-
-        function highlightGridCells(parentCard, positions) {
-            clearGridHighlights(parentCard);
-            positions.forEach(pos => {
-                const cell = parentCard.querySelector(`.scoring-cell[data-index="${pos}"]`);
-                if (cell) cell.classList.add('word-highlighted');
-            });
-        }
-
-        function clearGridHighlights(parentCard) {
-            parentCard.querySelectorAll('.scoring-cell.word-highlighted').forEach(cell => {
-                cell.classList.remove('word-highlighted');
-            });
-        }
-
-        function openDefModal(word, meanings) {
-            document.getElementById('def-word-title').textContent = word.toUpperCase();
-            const body = document.getElementById('def-body');
-            body.innerHTML = '';
-
-            if (!meanings || meanings.length === 0) {
-                body.innerHTML = '<div style="color:var(--slate);">未找到词典释义。</div>';
-            } else {
-                meanings.forEach(m => {
-                    const div = document.createElement('div');
-                    div.className = 'def-meaning';
-                    div.innerHTML = `<strong>${m.partOfSpeech || '释义'}</strong><ul>${m.definitions.map(d => `<li>${d}</li>`).join('')}</ul>`;
-                    body.appendChild(div);
-                });
-            }
-
-            document.getElementById('def-modal').classList.add('active');
-        }
-
-        function closeDefModal() {
-            document.getElementById('def-modal').classList.remove('active');
         }
 
         function closeReplayModal() {
