@@ -301,4 +301,50 @@ function scoreBoard(board) {
   };
 }
 
-module.exports = { scoreBoard, validSequences };
+function getClaimPositions(start, end) {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > 24) return null;
+  const startRow = Math.floor(start / BOARD_SIZE);
+  const endRow = Math.floor(end / BOARD_SIZE);
+  const startColumn = start % BOARD_SIZE;
+  const endColumn = end % BOARD_SIZE;
+  const positions = [];
+  let orientation = null;
+
+  if (startRow === endRow && endColumn >= startColumn) {
+    orientation = 'horizontal';
+    for (let column = startColumn; column <= endColumn; column++) positions.push(startRow * BOARD_SIZE + column);
+  } else if (startColumn === endColumn && endRow >= startRow) {
+    orientation = 'vertical';
+    for (let row = startRow; row <= endRow; row++) positions.push(row * BOARD_SIZE + startColumn);
+  } else {
+    return null;
+  }
+
+  return positions.length >= 2 && positions.length <= BOARD_SIZE ? { positions, orientation } : null;
+}
+
+function validateWordClaim(board, start, end) {
+  const claimInfo = getClaimPositions(start, end);
+  if (!claimInfo) return { valid: false, error: '请选择同一行或同一列的 2 至 5 个连续字块。' };
+  const { positions, orientation } = claimInfo;
+  const grid = Array.isArray(board) ? board : [];
+  if (positions.some(pos => !grid[pos])) return { valid: false, error: '所选区域包含空格。' };
+
+  const sequence = positions.map(pos => grid[pos]).join('');
+  const targets = validSequences[orientation]?.get(sequence);
+  if (!targets || targets.size === 0) {
+    const dirText = orientation === 'horizontal' ? '横向' : '纵向';
+    return { valid: false, error: `「${sequence}」在${dirText}上无法合成有效汉字。` };
+  }
+
+  return {
+    valid: true,
+    sequence,
+    characters: [...targets],
+    positions,
+    tileCount: positions.length,
+    orientation
+  };
+}
+
+module.exports = { scoreBoard, validSequences, getClaimPositions, validateWordClaim };

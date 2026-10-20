@@ -70,6 +70,7 @@
         <div class="definition-content">
           <p>房主开始后，当前玩家从 20 个字块中选一个。所有玩家各自将这个字块放入自己的 5×5 棋盘。</p>
           <p>市场包含部件和完整汉字。选中字块后，由每位玩家选择棋盘空格；超时会自动放置。</p>
+          <p>25 回合结束后进入<strong>汉字认领</strong>环节：点击连续字块的起点与终点（仅支持从左到右或从上到下），圈选你拼出的有效汉字并确认得分！</p>
         </div>
       </div>
     </div>
@@ -114,6 +115,14 @@
             <input type="checkbox" id="spectator-host" />
             <span>观战模式（房主不参与）</span>
           </label>
+          <label class="host-option">
+            <input type="checkbox" id="auto-score" />
+            <span>自动计分（跳过认领环节）</span>
+          </label>
+          <label class="lobby-timer-label" for="manual-duration-input" id="manual-duration-label">认领时限（秒）</label>
+          <div class="lobby-timer-row">
+            <input type="number" id="manual-duration-input" value="120" min="30" max="600" />
+          </div>
           <button class="btn btn-forest" id="lobby-start-button" type="button">开始游戏</button>
         </div>
         <p class="lobby-waiting-msg" id="lobby-waiting-msg" hidden>等待房主开始游戏…</p>
@@ -210,6 +219,45 @@
     </section>
   </main>
 
+  <!-- ══════════════════════════════════════════════════════
+     MANUAL SCORING SCREEN
+══════════════════════════════════════════════════════ -->
+  <section id="screen-manual-scoring" class="screen" aria-label="认领汉字">
+    <div class="manual-header">
+      <div>
+        <p class="definition-kicker">最终认领</p>
+        <h1>寻找你的汉字</h1>
+        <p>点击起点和终点，圈选同行或同列的字块，然后确认。</p>
+      </div>
+      <div class="manual-timer" id="manual-timer" aria-live="polite" aria-label="剩余时间">2:00</div>
+    </div>
+
+    <div class="manual-layout">
+      <main class="manual-board-panel">
+        <div class="manual-selection-bar" aria-live="polite">
+          <span id="manual-selection-word">点击一个字块开始</span>
+          <button class="btn btn-secondary manual-clear-btn" type="button" id="manual-clear-btn">清除</button>
+        </div>
+        <div class="manual-board" id="manual-board" role="grid" aria-label="你的最终棋盘"></div>
+        <div class="manual-actions">
+          <button class="btn btn-forest" id="manual-confirm-btn" type="button" disabled>确认汉字</button>
+          <button class="btn btn-secondary manual-ready-btn" id="manual-ready-btn" type="button">我已完成</button>
+          <p id="manual-ready-status" class="manual-ready-status" aria-live="polite"></p>
+          <p id="manual-feedback" class="manual-feedback" aria-live="polite"></p>
+        </div>
+      </main>
+
+      <aside class="manual-claims-panel">
+        <div class="manual-score-label">本局得分<strong id="manual-score">0</strong></div>
+        <h2>已认领汉字</h2>
+        <div id="manual-claims-list" class="manual-claims-list"></div>
+        <hr style="border:none;border-top:1px dashed rgba(200,169,110,0.35);margin:1rem 0 0.75rem;">
+        <h2>实时排名</h2>
+        <div id="manual-progress-list" class="manual-claims-list"></div>
+      </aside>
+    </div>
+  </section>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script>
@@ -236,13 +284,21 @@
       spectator: false,
       placementStatus: [],
       placedThisRound: false,
-      summary: { leaderboard: [] }
+      summary: { leaderboard: [] },
+      manualSelected: [],
+      manualClaims: [],
+      manualScore: 0,
+      manualDeadline: null,
+      manualProgress: [],
+      manualReady: false
     };
     let countdownInterval = null;
+    let manualTimerInterval = null;
 
     const screens = {
       landing: document.getElementById('screen-landing'),
-      room: document.getElementById('screen-room')
+      room: document.getElementById('screen-room'),
+      manual: document.getElementById('screen-manual-scoring')
     };
 
     function showScreen(screen) {
@@ -679,11 +735,13 @@
       document.getElementById('lobby-start-button').disabled = activeCount < 2;
       renderPlayers('lobby-player-list');
       renderPlayers('player-list');
-      renderGameState();
+      if (state.phase !== 'manual_scoring') renderGameState();
     }
 
     function resetToLanding() {
       clearSession();
+      clearInterval(manualTimerInterval);
+      manualTimerInterval = null;
       state.playerId = null;
       state.playerName = null;
       state.roomId = null;
@@ -705,10 +763,195 @@
       state.placementStatus = [];
       state.placedThisRound = false;
       state.summary = { leaderboard: [] };
+      state.manualSelected = [];
+      state.manualClaims = [];
+      state.manualScore = 0;
+      state.manualDeadline = null;
+      state.manualProgress = [];
+      state.manualReady = false;
       clearInterval(countdownInterval);
       showError('landing-error', '');
       showError('room-error', '');
       showScreen('landing');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Manual Scoring helpers
+    // ═══════════════════════════════════════════════════════
+    function getManualPath(first, second) {
+      const firstRow = Math.floor(first / 5);
+      const secondRow = Math.floor(second / 5);
+      const firstCol = first % 5;
+      const secondCol = second % 5;
+      const path = [];
+
+      // Strictly left-to-right (same row, second column to the right)
+      if (firstRow === secondRow && secondCol > firstCol) {
+        for (let c = firstCol; c <= secondCol; c++) {
+          path.push(firstRow * 5 + c);
+        }
+      // Strictly top-to-bottom (same column, second row below)
+      } else if (firstCol === secondCol && secondRow > firstRow) {
+        for (let r = firstRow; r <= secondRow; r++) {
+          path.push(r * 5 + firstCol);
+        }
+      }
+
+      return path.length <= 5 ? path : [];
+    }
+
+    function selectManualCell(index) {
+      if (state.phase !== 'manual_scoring' || state.manualReady || state.spectator) return;
+      if (!state.grid[index]) return;
+
+      if (state.manualSelected.includes(index)) {
+        if (index === state.manualSelected[state.manualSelected.length - 1]) {
+          state.manualSelected = state.manualSelected.slice(0, -1);
+        } else if (state.manualSelected.length === 1 && index === state.manualSelected[0]) {
+          state.manualSelected = [];
+        } else {
+          toast('只能取消末尾选中的字块。');
+        }
+        renderManualBoard();
+        updateManualSelectionBar();
+        return;
+      }
+
+      if (state.manualSelected.length === 0) {
+        state.manualSelected = [index];
+      } else if (state.manualSelected.length === 1) {
+        const path = getManualPath(state.manualSelected[0], index);
+        if (path.length >= 2) {
+          state.manualSelected = path;
+        } else {
+          toast('请向右或向下选择字块。');
+          state.manualSelected = [index];
+        }
+      } else {
+        const last = state.manualSelected[state.manualSelected.length - 1];
+        const pathFromLast = getManualPath(last, index);
+        if (pathFromLast.length === 2) {
+          const first = state.manualSelected[0];
+          const second = state.manualSelected[1];
+          const dirHorizontal = Math.floor(first / 5) === Math.floor(second / 5);
+          const newDirHorizontal = Math.floor(last / 5) === Math.floor(index / 5);
+          if (dirHorizontal === newDirHorizontal) {
+            state.manualSelected = state.manualSelected.concat(index);
+          } else {
+            toast('请沿相同方向（向右或向下）继续选择。');
+          }
+        } else {
+          toast('只能向右或向下扩展一个字块。');
+        }
+      }
+
+      renderManualBoard();
+      updateManualSelectionBar();
+    }
+
+    function renderManualBoard() {
+      const board = document.getElementById('manual-board');
+      if (!board) return;
+      board.innerHTML = '';
+      const foundPositions = new Set(state.manualClaims.flatMap(c => c.positions));
+      state.grid.forEach((tile, index) => {
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = 'manual-cell';
+        if (foundPositions.has(index)) cell.classList.add('manual-found');
+        if (state.manualSelected.includes(index)) cell.classList.add('manual-selected');
+        cell.textContent = tile || '';
+        cell.setAttribute('aria-label', `字 ${tile || '空'}, 格 ${index + 1}`);
+        if (!tile) cell.disabled = true;
+        cell.addEventListener('click', () => selectManualCell(index));
+        board.appendChild(cell);
+      });
+    }
+
+    function updateManualSelectionBar() {
+      const word = state.manualSelected.map(i => state.grid[i] || '').join('');
+      document.getElementById('manual-selection-word').textContent = word || '点击一个字块开始';
+      document.getElementById('manual-confirm-btn').disabled = state.manualSelected.length < 2;
+    }
+
+    function clearManualSelection() {
+      state.manualSelected = [];
+      renderManualBoard();
+      updateManualSelectionBar();
+    }
+
+    function renderManualClaims() {
+      const list = document.getElementById('manual-claims-list');
+      list.innerHTML = '';
+      if (!state.manualClaims.length) {
+        list.innerHTML = '<p class="manual-empty">暂未认领任何汉字。</p>';
+        return;
+      }
+      state.manualClaims.forEach(claim => {
+        const item = document.createElement('div');
+        item.className = 'manual-claim';
+        const chars = Array.isArray(claim.characters) ? claim.characters.join(' / ') : (claim.character || claim.word || '');
+        item.innerHTML = `<strong>${chars}</strong><span>+${claim.score} 分</span>`;
+        list.appendChild(item);
+      });
+      document.getElementById('manual-score').textContent = state.manualScore;
+    }
+
+    function renderManualProgress(progress = state.manualProgress) {
+      const list = document.getElementById('manual-progress-list');
+      if (!list) return;
+      list.innerHTML = '';
+      (progress || []).forEach((p, i) => {
+        const row = document.createElement('div');
+        row.className = 'manual-progress-row';
+        row.innerHTML = `<span><b class="manual-progress-rank">${i + 1}</b>${p.name}${p.playerId === state.playerId ? ' (你)' : ''}</span>
+          <span>${p.words} 字 · ${p.score} 分 · ${p.ready ? '✓ 完成' : '寻找中'}</span>`;
+        list.appendChild(row);
+      });
+    }
+
+    function updateManualTimer() {
+      const seconds = Math.max(0, Math.ceil((state.manualDeadline - Date.now()) / 1000));
+      const minutes = Math.floor(seconds / 60);
+      const remainder = String(seconds % 60).padStart(2, '0');
+      const el = document.getElementById('manual-timer');
+      if (el) el.textContent = `${minutes}:${remainder}`;
+      if (seconds === 0) { clearInterval(manualTimerInterval); manualTimerInterval = null; }
+    }
+
+    function enterManualScoring(deadline, existingClaims = [], isReady = false) {
+      state.phase = 'manual_scoring';
+      state.manualDeadline = deadline;
+      state.manualSelected = [];
+      state.manualClaims = existingClaims;
+      state.manualScore = existingClaims.reduce((sum, c) => sum + (c.score || 0), 0);
+      state.manualReady = isReady;
+
+      showScreen('manual');
+
+      const isSpec = state.spectator === true;
+      document.getElementById('manual-confirm-btn').style.display = isSpec ? 'none' : '';
+      document.getElementById('manual-ready-btn').style.display = isSpec ? 'none' : '';
+      document.getElementById('manual-clear-btn').style.display = isSpec ? 'none' : '';
+      document.getElementById('manual-selection-word').textContent = isSpec
+        ? '观战模式：正在观看玩家认领汉字…'
+        : '点击一个字块开始';
+
+      const readyBtn = document.getElementById('manual-ready-btn');
+      readyBtn.textContent = isReady ? '我还要继续找' : '我已完成';
+      readyBtn.classList.toggle('is-ready', isReady);
+      document.getElementById('manual-ready-status').textContent = isReady ? '已标记完成。点击「我还要继续找」可撤销。' : '';
+      document.getElementById('manual-feedback').textContent = '';
+      document.getElementById('manual-feedback').className = 'manual-feedback';
+
+      renderManualBoard();
+      renderManualClaims();
+      renderManualProgress();
+      if (!isSpec) clearManualSelection();
+
+      clearInterval(manualTimerInterval);
+      updateManualTimer();
+      manualTimerInterval = setInterval(updateManualTimer, 250);
     }
 
     document.getElementById('create-form').addEventListener('submit', event => {
@@ -758,14 +1001,27 @@
       if (!event.target.checked && !timerInput.value) timerInput.value = '30';
     });
     document.getElementById('spectator-host').addEventListener('change', renderRoom);
+    document.getElementById('auto-score').addEventListener('change', () => {
+      const manualDurationLabel = document.getElementById('manual-duration-label');
+      const manualDurationInput = document.getElementById('manual-duration-input');
+      const isAuto = document.getElementById('auto-score').checked;
+      manualDurationLabel.style.opacity = isAuto ? '0.4' : '1';
+      manualDurationInput.disabled = isAuto;
+    });
+
     document.getElementById('lobby-start-button').addEventListener('click', () => {
       const unlimited = document.getElementById('unlimited-time').checked;
       const rawTimer = Number.parseInt(document.getElementById('turn-timer-input').value, 10);
       const turnTimer = unlimited ? 0 : Number.isFinite(rawTimer) ? Math.min(Math.max(rawTimer, 1), 300) : 30;
+      const automaticScoring = document.getElementById('auto-score').checked;
+      const rawManual = Number.parseInt(document.getElementById('manual-duration-input').value, 10);
+      const manualSearchDuration = Number.isFinite(rawManual) ? Math.min(Math.max(rawManual, 30), 600) : 120;
       socket.emit('start_game', {
         turnTimer,
         unlimitedTime: unlimited,
-        spectatorHost: document.getElementById('spectator-host').checked
+        spectatorHost: document.getElementById('spectator-host').checked,
+        automaticScoring,
+        manualSearchDuration
       });
     });
     document.getElementById('lobby-leave-button').addEventListener('click', () => {
@@ -816,13 +1072,27 @@
     socket.on('room_joined', data => enterRoom(data));
 
     socket.on('rejoined_success', data => {
+      state.roomId = data.roomId;
+      state.playerId = data.playerId;
+      state.playerName = data.playerName;
       state.hostId = data.hostId;
       state.isHost = data.isHost;
       state.phase = data.phase;
+      state.spectator = data.spectator === true;
       state.players = data.players || [];
       state.grid = data.grid || Array(25).fill('');
+      saveSession();
       if (data.gameState) applyGameState(data.gameState);
-      enterRoom(data);
+      if (data.phase === 'manual_scoring') {
+        state.manualProgress = (data.gameState && data.gameState.manualProgress) || [];
+        enterManualScoring(
+          data.gameState?.manualDeadline || (Date.now() + 120000),
+          data.manualClaims || [],
+          data.manualReady === true
+        );
+      } else {
+        enterRoom(data);
+      }
     });
 
     socket.on('rejoin_failed', ({ message }) => {
@@ -836,7 +1106,7 @@
       state.hostId = room.hostId;
       state.phase = room.phase;
       state.isHost = state.playerId === room.hostId;
-      if (state.roomId) {
+      if (state.roomId && state.phase !== 'manual_scoring') {
         showScreen('room');
         renderRoom();
       }
@@ -863,7 +1133,66 @@
     socket.on('game_started', gameState => {
       state.phase = 'playing';
       state.grid = Array(25).fill('');
+      state.manualSelected = [];
+      state.manualClaims = [];
+      state.manualScore = 0;
+      state.manualReady = false;
       applyGameState(gameState);
+    });
+
+    socket.on('manual_scoring_started', ({ deadline, duration, progress }) => {
+      state.manualProgress = progress || [];
+      enterManualScoring(deadline, [], false);
+      if (state.spectator) {
+        toast('字块认领阶段开始！（观战中）');
+      } else {
+        toast(`开始寻找汉字！共 ${duration} 秒。`);
+      }
+    });
+
+    socket.on('manual_scoring_progress', ({ progress }) => {
+      state.manualProgress = progress || [];
+      renderManualProgress();
+    });
+
+    socket.on('word_claim_result', ({ valid, message, words, claims, total }) => {
+      const feedback = document.getElementById('manual-feedback');
+      document.getElementById('manual-confirm-btn').disabled = false;
+      if (!valid) {
+        feedback.textContent = message;
+        feedback.className = 'manual-feedback invalid';
+        return;
+      }
+      state.manualClaims = claims || state.manualClaims;
+      state.manualScore = total ?? state.manualScore;
+      feedback.textContent = message || '认领成功！';
+      feedback.className = 'manual-feedback valid';
+      renderManualClaims();
+      renderManualBoard();
+      clearManualSelection();
+    });
+
+    document.getElementById('manual-confirm-btn').addEventListener('click', () => {
+      if (state.manualReady || state.manualSelected.length < 2) return;
+      document.getElementById('manual-confirm-btn').disabled = true;
+      socket.emit('claim_word', {
+        start: state.manualSelected[0],
+        end: state.manualSelected[state.manualSelected.length - 1]
+      });
+    });
+
+    document.getElementById('manual-clear-btn').addEventListener('click', clearManualSelection);
+
+    document.getElementById('manual-ready-btn').addEventListener('click', () => {
+      if (state.phase !== 'manual_scoring') return;
+      state.manualReady = !state.manualReady;
+      const btn = document.getElementById('manual-ready-btn');
+      btn.textContent = state.manualReady ? '我还要继续找' : '我已完成';
+      btn.classList.toggle('is-ready', state.manualReady);
+      document.getElementById('manual-ready-status').textContent = state.manualReady
+        ? '已标记完成。若所有人都完成则立即结算。'
+        : '';
+      socket.emit('manual_ready', { ready: state.manualReady });
     });
 
     socket.on('game_state', applyGameState);
@@ -876,11 +1205,14 @@
     });
 
     socket.on('game_finished', ({ summary } = {}) => {
+      clearInterval(manualTimerInterval);
+      manualTimerInterval = null;
       state.phase = 'finished';
       state.turnStage = 'finished';
       state.summary = summary || { leaderboard: [] };
+      showScreen('room');
       renderRoom();
-      toast('所有回合完成。');
+      toast('对局结束，进入结算！');
     });
 
     socket.on('player_left', ({ playerName, players }) => {

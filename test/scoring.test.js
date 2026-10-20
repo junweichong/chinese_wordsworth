@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { scoreBoard } = require('../scoring');
+const { scoreBoard, getClaimPositions, validateWordClaim } = require('../scoring');
 
 function boardWith(entries) {
   const board = Array(25).fill('');
@@ -54,4 +54,50 @@ test('allows lenient matching for compound characters (left radical beside top o
   assert.equal(scoreBoard(boardWith([[0, '木'], [1, '十'], [2, '音']])).words.some(w => w.character === '樟'), true);
   // Vertically placed -> invalid for 樟 (since 木 is left radical)
   assert.equal(scoreBoard(boardWith([[0, '木'], [5, '音'], [10, '十']])).words.some(w => w.character === '樟'), false);
+});
+
+test('getClaimPositions calculates positions and orientation correctly', () => {
+  assert.deepEqual(getClaimPositions(0, 1), { positions: [0, 1], orientation: 'horizontal' });
+  assert.deepEqual(getClaimPositions(0, 2), { positions: [0, 1, 2], orientation: 'horizontal' });
+  assert.deepEqual(getClaimPositions(0, 5), { positions: [0, 5], orientation: 'vertical' });
+  assert.deepEqual(getClaimPositions(0, 10), { positions: [0, 5, 10], orientation: 'vertical' });
+  assert.equal(getClaimPositions(0, 0), null); // length 1 is invalid
+  assert.equal(getClaimPositions(0, 6), null); // diagonal is invalid
+  assert.equal(getClaimPositions(1, 0), null); // backwards invalid (must be normalized start <= end)
+});
+
+test('validateWordClaim validates character sequences and orientations', () => {
+  const board = boardWith([[0, '日'], [1, '月'], [5, '穴'], [10, '力'], [15, '王'], [16, '木'], [17, '木']]);
+
+  // Valid horizontal 2-tile
+  const claimMing = validateWordClaim(board, 0, 1);
+  assert.equal(claimMing.valid, true);
+  assert.equal(claimMing.sequence, '日月');
+  assert.deepEqual(claimMing.characters, ['明']);
+  assert.equal(claimMing.tileCount, 2);
+
+  // Valid vertical 2-tile
+  const claimQiong = validateWordClaim(board, 5, 10);
+  assert.equal(claimQiong.valid, true);
+  assert.equal(claimQiong.sequence, '穴力');
+  assert.deepEqual(claimQiong.characters, ['穷']);
+
+  // Sub-word claims: [15, 17] for 琳 (3 tiles) and [16, 17] for 林 (2 tiles)
+  const claimLin3 = validateWordClaim(board, 15, 17);
+  assert.equal(claimLin3.valid, true);
+  assert.deepEqual(claimLin3.characters, ['琳']);
+  assert.equal(claimLin3.tileCount, 3);
+
+  const claimLin2 = validateWordClaim(board, 16, 17);
+  assert.equal(claimLin2.valid, true);
+  assert.deepEqual(claimLin2.characters, ['林']);
+  assert.equal(claimLin2.tileCount, 2);
+
+  // Wrong orientation rejection
+  const wrongOrient = validateWordClaim(boardWith([[0, '穴'], [1, '力']]), 0, 1);
+  assert.equal(wrongOrient.valid, false);
+
+  // Empty cell rejection
+  const withEmpty = validateWordClaim(board, 0, 2);
+  assert.equal(withEmpty.valid, false);
 });
