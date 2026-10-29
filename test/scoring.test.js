@@ -46,13 +46,11 @@ test('strictly enforces orientation: left-right only horizontal, top-bottom only
   assert.equal(scoreBoard(boardWith([[0, '穴'], [5, '力']])).words.some(w => w.character === '穷'), true); // vertical valid
 });
 
-test('allows lenient matching for compound characters (left radical beside top or bottom component)', () => {
-  // 樟 is left-right: 木 + 章, where 章 is 音 over 十
-  // Radical beside top component horizontally: [木, 音, 十] -> valid
-  assert.equal(scoreBoard(boardWith([[0, '木'], [1, '音'], [2, '十']])).words.some(w => w.character === '樟'), true);
-  // Radical beside bottom component horizontally: [木, 十, 音] -> valid
-  assert.equal(scoreBoard(boardWith([[0, '木'], [1, '十'], [2, '音']])).words.some(w => w.character === '樟'), true);
-  // Vertically placed -> invalid for 樟 (since 木 is left radical)
+test('rejects 1D linear flattening of compound characters with mixed orientations', () => {
+  // 樟 is left-right: 木 + 章, where 章 is top-bottom (音 over 十)
+  // In a 1D straight line, neither [木, 音, 十] nor [木, 十, 音] forms 樟
+  assert.equal(scoreBoard(boardWith([[0, '木'], [1, '音'], [2, '十']])).words.some(w => w.character === '樟'), false);
+  assert.equal(scoreBoard(boardWith([[0, '木'], [1, '十'], [2, '音']])).words.some(w => w.character === '樟'), false);
   assert.equal(scoreBoard(boardWith([[0, '木'], [5, '音'], [10, '十']])).words.some(w => w.character === '樟'), false);
 });
 
@@ -100,4 +98,74 @@ test('validateWordClaim validates character sequences and orientations', () => {
   // Empty cell rejection
   const withEmpty = validateWordClaim(board, 0, 2);
   assert.equal(withEmpty.valid, false);
+});
+
+test('validateWordClaim validates non-linear adjacent tiles matching radical positions', () => {
+  // L-shape for 樟: 木 at (0,0)[0], 音 at (0,1)[1], 十 at (1,1)[6]
+  const boardZhang = boardWith([[0, '木'], [1, '音'], [6, '十']]);
+  const claimZhang = validateWordClaim(boardZhang, [0, 1, 6]);
+  assert.equal(claimZhang.valid, true);
+  assert.deepEqual(claimZhang.characters, ['樟']);
+  assert.equal(claimZhang.tileCount, 3);
+  assert.equal(claimZhang.orientation, 'adjacent');
+
+  // L-shape for 想: 木 at (0,0)[0], 目 at (0,1)[1], 心 at (1,0)[5]
+  const boardXiang = boardWith([[0, '木'], [1, '目'], [5, '心']]);
+  const claimXiang = validateWordClaim(boardXiang, [0, 1, 5]);
+  assert.equal(claimXiang.valid, true);
+  assert.deepEqual(claimXiang.characters, ['想']);
+  assert.equal(claimXiang.tileCount, 3);
+  assert.equal(claimXiang.orientation, 'adjacent');
+
+  // Invalid: 心 on top of 相 for 想: 心 at (0,0)[0], 木 at (1,0)[5], 目 at (1,1)[6]
+  const boardXiangInv = boardWith([[0, '心'], [5, '木'], [6, '目']]);
+  const claimXiangInv = validateWordClaim(boardXiangInv, [0, 5, 6]);
+  assert.equal(claimXiangInv.valid, false);
+
+  // Disconnected tiles (not adjacent): 0 and 2
+  const claimDisconn = validateWordClaim(boardWith([[0, '日'], [2, '月']]), [0, 2]);
+  assert.equal(claimDisconn.valid, false);
+  assert.equal(claimDisconn.error, '所选字块必须相互相邻。');
+});
+
+test('components and characters are strictly distinct and not interchangeable', () => {
+  // 休 is composed of component 亻 and character 木
+  const claimXiuValid = validateWordClaim(boardWith([[0, '亻'], [1, '木']]), [0, 1]);
+  assert.equal(claimXiuValid.valid, true);
+  assert.deepEqual(claimXiuValid.characters, ['休']);
+
+  // Character 人 cannot substitute component 亻 for 休
+  const claimXiuInvalid = validateWordClaim(boardWith([[0, '人'], [1, '木']]), [0, 1]);
+  assert.equal(claimXiuInvalid.valid, false);
+
+  // 从 is composed of character 人 and character 人
+  const claimCongValid = validateWordClaim(boardWith([[0, '人'], [1, '人']]), [0, 1]);
+  assert.equal(claimCongValid.valid, true);
+  assert.deepEqual(claimCongValid.characters, ['从']);
+
+  // Component 亻 cannot substitute character 人 for 从
+  const claimCongInvalid = validateWordClaim(boardWith([[0, '亻'], [1, '人']]), [0, 1]);
+  assert.equal(claimCongInvalid.valid, false);
+
+  // 江 is composed of component 氵 and character 工
+  const claimJiangValid = validateWordClaim(boardWith([[0, '氵'], [1, '工']]), [0, 1]);
+  assert.equal(claimJiangValid.valid, true);
+  assert.deepEqual(claimJiangValid.characters, ['江']);
+
+  // Character 水 cannot substitute component 氵 for 江
+  const claimJiangInvalid = validateWordClaim(boardWith([[0, '水'], [1, '工']]), [0, 1]);
+  assert.equal(claimJiangInvalid.valid, false);
+});
+
+
+test('recognizes previously incomplete Tier 1 characters and newly added Tier 2 characters', () => {
+  // 往 was previously incomplete in Tier 1
+  const claimWang = validateWordClaim(boardWith([[0, '彳'], [1, '主']]), [0, 1]);
+  assert.equal(claimWang.valid, true);
+  assert(claimWang.characters.includes('往'));
+
+  // 兀 is in Tier 2 (rank 3503: 一 over 儿)
+  const claimWu = validateWordClaim(boardWith([[0, '一'], [5, '儿']]), [0, 5]);
+  assert.equal(claimWu.valid, true);
+  assert(claimWu.characters.includes('兀'));
 });

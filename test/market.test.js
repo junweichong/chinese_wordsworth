@@ -13,9 +13,9 @@ test('creates a shuffled 20-tile market with side radicals, top radicals, and si
   const topRadicals = market.filter(tile => tile.category === 'top_radical');
   const singleChars = market.filter(tile => tile.category === 'single_character');
 
-  assert.equal(sideRadicals.length, 8);
-  assert.equal(topRadicals.length, 5);
-  assert.equal(singleChars.length, 7);
+  assert.equal(sideRadicals.length, 5);
+  assert.equal(topRadicals.length, 3);
+  assert.equal(singleChars.length, 12);
 });
 
 test('refills a selected slot from its original category pool', () => {
@@ -36,4 +36,17 @@ test('public market payload contains no category or metadata', () => {
   for (const tile of market) {
     assert.deepEqual(Object.keys(tile).sort(), ['id', 'symbol']);
   }
+});
+
+test('market completely refreshes with 20 new tiles on demand', () => {
+  const initialMarket = createMarket();
+  assert.equal(initialMarket.length, 20);
+
+  // Calling createMarket generates a fresh full set of 20 unique tiles
+  const refreshedMarket = createMarket();
+  assert.equal(refreshedMarket.length, 20);
+  assert.equal(new Set(refreshedMarket.map(tile => tile.symbol)).size, 20);
+  assert.equal(refreshedMarket.filter(t => t.category === 'side_radical').length, 5);
+  assert.equal(refreshedMarket.filter(t => t.category === 'top_radical').length, 3);
+  assert.equal(refreshedMarket.filter(t => t.category === 'single_character').length, 12);
 });

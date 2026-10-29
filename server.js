@@ -332,6 +332,13 @@ function finishRound(room) {
   }
 
   room.roundIndex++;
+  if (room.roundIndex % 5 === 0) {
+    room.market = createMarket();
+    io.to(room.id).emit('market_refreshed', {
+      round: room.roundIndex + 1,
+      message: `第 ${room.roundIndex} 回合结束，字池已全面刷新！`
+    });
+  }
   room.currentSelectorId = room.turnOrder[room.roundIndex];
   room.turnStage = 'selecting';
   room.players.forEach(player => { player.placedThisRound = player.spectator === true; });
@@ -631,13 +638,13 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('claim_word', ({ start, end } = {}) => {
+  socket.on('claim_word', (claimPayload = {}) => {
     const room = rooms[socket.data.roomId];
     if (!room || room.phase !== 'manual_scoring') return;
     const player = room.players.find(current => current.id === socket.data.playerId);
     if (!player || !player.connected || player.spectator) return;
 
-    const result = validateWordClaim(player.board, start, end);
+    const result = validateWordClaim(player.board, claimPayload.positions || claimPayload);
     if (!result.valid) {
       return socket.emit('word_claim_result', { valid: false, message: result.error });
     }

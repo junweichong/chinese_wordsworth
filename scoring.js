@@ -68,17 +68,6 @@ function combineChildSets(childSequenceSets, opOrientations) {
   return combined;
 }
 
-function getNodeTree(node) {
-  if (node.operator) return node;
-  if (node.character) {
-    const rec = characterRecords.get(node.character);
-    if (rec && rec.complete && rec.tree && rec.tree.operator) {
-      return rec.tree;
-    }
-  }
-  return null;
-}
-
 function sequencesForNode(node, ancestors) {
   if (node.character !== undefined) {
     if (unknownMarkers.has(node.character)) return [];
@@ -106,106 +95,7 @@ function sequencesForNode(node, ancestors) {
 
   const opOrientations = getOpOrientations(node.operator);
   const childSequenceSets = node.components.map(child => sequencesForNode(child, ancestors));
-  const combined = combineChildSets(childSequenceSets, opOrientations);
-
-  const sequencesMap = new Map();
-  for (const item of combined) {
-    sequencesMap.set(item.sequence.join(''), item);
-  }
-
-  // Lenient scenario:
-  // When radical is on the left (operator ⿰) and right child is top-bottom (operator ⿱ or ⿳):
-  // Radical can either be beside the top component or the bottom component on a horizontal line.
-  if (node.operator === '\u2FF0' && node.components.length === 2) {
-    const [leftChild, rightChild] = node.components;
-    const rightTree = getNodeTree(rightChild);
-    if (rightTree && (rightTree.operator === '\u2FF1' || rightTree.operator === '\u2FF3')) {
-      const leftSeqs = sequencesForNode(leftChild, ancestors);
-      const rightCompSets = rightTree.components.map(comp => sequencesForNode(comp, ancestors));
-
-      // 1) Radical beside top component: [Left, Top, Bottom]
-      const topFirstCombined = combineChildSets(rightCompSets, new Set(['horizontal', 'vertical']));
-      for (const l of leftSeqs) {
-        for (const r of topFirstCombined) {
-          if (l.sequence.length + r.sequence.length <= BOARD_SIZE) {
-            const seq = [...l.sequence, ...r.sequence];
-            const key = seq.join('');
-            if (sequencesMap.has(key)) {
-              sequencesMap.get(key).orientations.add('horizontal');
-            } else {
-              sequencesMap.set(key, {
-                sequence: seq,
-                orientations: new Set(['horizontal'])
-              });
-            }
-          }
-        }
-      }
-
-      // 2) Radical beside bottom component: [Left, Bottom, Top]
-      const bottomFirstCombined = combineChildSets([...rightCompSets].reverse(), new Set(['horizontal', 'vertical']));
-      for (const l of leftSeqs) {
-        for (const r of bottomFirstCombined) {
-          if (l.sequence.length + r.sequence.length <= BOARD_SIZE) {
-            const seq = [...l.sequence, ...r.sequence];
-            const key = seq.join('');
-            if (sequencesMap.has(key)) {
-              sequencesMap.get(key).orientations.add('horizontal');
-            } else {
-              sequencesMap.set(key, {
-                sequence: seq,
-                orientations: new Set(['horizontal'])
-              });
-            }
-          }
-        }
-      }
-    }
-
-    const leftTree = getNodeTree(leftChild);
-    if (leftTree && (leftTree.operator === '\u2FF1' || leftTree.operator === '\u2FF3')) {
-      const rightSeqs = sequencesForNode(rightChild, ancestors);
-      const leftCompSets = leftTree.components.map(comp => sequencesForNode(comp, ancestors));
-
-      const topFirstCombined = combineChildSets(leftCompSets, new Set(['horizontal', 'vertical']));
-      for (const l of topFirstCombined) {
-        for (const r of rightSeqs) {
-          if (l.sequence.length + r.sequence.length <= BOARD_SIZE) {
-            const seq = [...l.sequence, ...r.sequence];
-            const key = seq.join('');
-            if (sequencesMap.has(key)) {
-              sequencesMap.get(key).orientations.add('horizontal');
-            } else {
-              sequencesMap.set(key, {
-                sequence: seq,
-                orientations: new Set(['horizontal'])
-              });
-            }
-          }
-        }
-      }
-
-      const bottomFirstCombined = combineChildSets([...leftCompSets].reverse(), new Set(['horizontal', 'vertical']));
-      for (const l of bottomFirstCombined) {
-        for (const r of rightSeqs) {
-          if (l.sequence.length + r.sequence.length <= BOARD_SIZE) {
-            const seq = [...l.sequence, ...r.sequence];
-            const key = seq.join('');
-            if (sequencesMap.has(key)) {
-              sequencesMap.get(key).orientations.add('horizontal');
-            } else {
-              sequencesMap.set(key, {
-                sequence: seq,
-                orientations: new Set(['horizontal'])
-              });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return [...sequencesMap.values()];
+  return combineChildSets(childSequenceSets, opOrientations);
 }
 
 function sequencesForCharacter(character, ancestors = new Set()) {
@@ -301,6 +191,194 @@ function scoreBoard(board) {
   };
 }
 
+function getDecompositions(char, maxLen = BOARD_SIZE) {
+  const rec = characterRecords.get(char);
+  if (!rec || !rec.complete || !rec.tree) return [];
+
+  function expandNode(node) {
+    if (node.character) {
+      const c = node.character;
+      const res = [[c]];
+      const subRec = characterRecords.get(node.character);
+      if (subRec && subRec.complete && subRec.tree && subRec.tree.operator) {
+        for (const sub of expandNode(subRec.tree)) res.push(sub);
+      }
+      return res;
+    }
+    if (node.operator && node.components) {
+      let combined = [[]];
+      for (const comp of node.components) {
+        const compExpansions = expandNode(comp);
+        const next = [];
+        for (const prefix of combined) {
+          for (const suffix of compExpansions) {
+            if (prefix.length + suffix.length <= maxLen) next.push([...prefix, ...suffix]);
+          }
+        }
+        combined = next;
+      }
+      return combined;
+    }
+    return [];
+  }
+  return expandNode(rec.tree).filter(seq => seq.length >= 2 && seq.length <= maxLen);
+}
+
+const multisetIndex = new Map();
+function buildMultisetIndex() {
+  for (const rec of characterData.characters) {
+    if (!rec.complete) continue;
+    for (const seq of getDecompositions(rec.character)) {
+      const key = [...seq].sort().join('');
+      if (!multisetIndex.has(key)) multisetIndex.set(key, new Set());
+      multisetIndex.get(key).add(rec.character);
+    }
+  }
+}
+buildMultisetIndex();
+
+function checkSpatialRelation(op, p1, p2) {
+  const minR1 = Math.min(...p1.map(t => t.r)), maxR1 = Math.max(...p1.map(t => t.r));
+  const minC1 = Math.min(...p1.map(t => t.c)), maxC1 = Math.max(...p1.map(t => t.c));
+  const minR2 = Math.min(...p2.map(t => t.r)), maxR2 = Math.max(...p2.map(t => t.r));
+  const minC2 = Math.min(...p2.map(t => t.c)), maxC2 = Math.max(...p2.map(t => t.c));
+
+  switch (op) {
+    case '⿰': // Left-Right: p1 is left of p2
+      return maxC1 <= minC2 && (minC1 < maxC2 || minC2 > maxC1) && !(maxR1 < minR2 || minR1 > maxR2);
+    case '⿱': // Above-Below: p1 is above p2
+      return maxR1 <= minR2 && (minR1 < maxR2 || minR2 > maxR1) && !(maxC1 < minC2 || minC1 > maxC2);
+    case '⿸': // Enclosure from upper-left
+      return minR1 <= minR2 && minC1 <= minC2;
+    case '⿺': // Enclosure from lower-left
+      return maxR1 >= maxR2 && minC1 <= minC2;
+    case '⿹': // Enclosure from upper-right
+      return minR1 <= minR2 && maxC1 >= maxC2;
+    case '⿵': // Enclosure from above
+      return minR1 <= minR2;
+    case '⿶': // Enclosure from below
+      return maxR1 >= maxR2;
+    case '⿷': // Enclosure from left
+      return minC1 <= minC2;
+    default:
+      return true;
+  }
+}
+
+function checkSpatialRelation3(op, p1, p2, p3) {
+  const minC1 = Math.min(...p1.map(t => t.c)), maxC1 = Math.max(...p1.map(t => t.c));
+  const minC2 = Math.min(...p2.map(t => t.c)), maxC2 = Math.max(...p2.map(t => t.c));
+  const minC3 = Math.min(...p3.map(t => t.c)), maxC3 = Math.max(...p3.map(t => t.c));
+  const minR1 = Math.min(...p1.map(t => t.r)), maxR1 = Math.max(...p1.map(t => t.r));
+  const minR2 = Math.min(...p2.map(t => t.r)), maxR2 = Math.max(...p2.map(t => t.r));
+  const minR3 = Math.min(...p3.map(t => t.r)), maxR3 = Math.max(...p3.map(t => t.r));
+
+  if (op === '⿲') return maxC1 <= minC2 && maxC2 <= minC3;
+  if (op === '⿳') return maxR1 <= minR2 && maxR2 <= minR3;
+  return true;
+}
+
+function matchNode(node, tiles) {
+  if (tiles.length === 1) {
+    const tileChar = tiles[0].char;
+    if (node.character) {
+      if (node.character === tileChar) return true;
+      const rec = characterRecords.get(node.character);
+      if (rec && rec.complete && rec.tree && rec.tree.character) {
+        return rec.tree.character === tileChar;
+      }
+    }
+    return false;
+  }
+
+  if (node.character) {
+    const rec = characterRecords.get(node.character);
+    if (rec && rec.complete && rec.tree) return matchNode(rec.tree, tiles);
+    return false;
+  }
+
+  const op = node.operator;
+  const comps = node.components;
+  if (!op || !comps) return false;
+
+  const n = tiles.length;
+  if (comps.length === 2) {
+    const [c1, c2] = comps;
+    for (let mask = 1; mask < (1 << n) - 1; mask++) {
+      const p1 = [], p2 = [];
+      for (let i = 0; i < n; i++) {
+        if ((mask >> i) & 1) p1.push(tiles[i]);
+        else p2.push(tiles[i]);
+      }
+      if (checkSpatialRelation(op, p1, p2)) {
+        if (matchNode(c1, p1) && matchNode(c2, p2)) return true;
+      }
+    }
+    return false;
+  }
+
+  if (comps.length === 3) {
+    const [c1, c2, c3] = comps;
+    for (let m1 = 1; m1 < (1 << n); m1++) {
+      for (let m2 = 1; m2 < (1 << n); m2++) {
+        if ((m1 & m2) !== 0) continue;
+        const m3 = ((1 << n) - 1) ^ (m1 | m2);
+        if (m3 === 0) continue;
+        const p1 = [], p2 = [], p3 = [];
+        for (let i = 0; i < n; i++) {
+          if ((m1 >> i) & 1) p1.push(tiles[i]);
+          else if ((m2 >> i) & 1) p2.push(tiles[i]);
+          else p3.push(tiles[i]);
+        }
+        if (checkSpatialRelation3(op, p1, p2, p3)) {
+          if (matchNode(c1, p1) && matchNode(c2, p2) && matchNode(c3, p3)) return true;
+        }
+      }
+    }
+    return false;
+  }
+  return false;
+}
+
+function findCharactersForTiles(tiles) {
+  const key = tiles.map(t => t.char).sort().join('');
+  const candidates = multisetIndex.get(key);
+  if (!candidates) return [];
+  const matched = [];
+  for (const char of candidates) {
+    const rec = characterRecords.get(char);
+    if (rec && rec.complete && rec.tree && matchNode(rec.tree, tiles)) {
+      matched.push(char);
+    }
+  }
+  return matched;
+}
+
+function arePositionsConnected(positions) {
+  if (positions.length <= 1) return true;
+  const posSet = new Set(positions);
+  const visited = new Set();
+  const queue = [positions[0]];
+  visited.add(positions[0]);
+  while (queue.length > 0) {
+    const curr = queue.shift();
+    const r = Math.floor(curr / BOARD_SIZE);
+    const c = curr % BOARD_SIZE;
+    const neighbors = [];
+    if (r > 0) neighbors.push((r - 1) * BOARD_SIZE + c);
+    if (r < BOARD_SIZE - 1) neighbors.push((r + 1) * BOARD_SIZE + c);
+    if (c > 0) neighbors.push(r * BOARD_SIZE + (c - 1));
+    if (c < BOARD_SIZE - 1) neighbors.push(r * BOARD_SIZE + (c + 1));
+    for (const n of neighbors) {
+      if (posSet.has(n) && !visited.has(n)) {
+        visited.add(n);
+        queue.push(n);
+      }
+    }
+  }
+  return visited.size === positions.length;
+}
+
 function getClaimPositions(start, end) {
   if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > 24) return null;
   const startRow = Math.floor(start / BOARD_SIZE);
@@ -323,25 +401,98 @@ function getClaimPositions(start, end) {
   return positions.length >= 2 && positions.length <= BOARD_SIZE ? { positions, orientation } : null;
 }
 
-function validateWordClaim(board, start, end) {
-  const claimInfo = getClaimPositions(start, end);
-  if (!claimInfo) return { valid: false, error: '请选择同一行或同一列的 2 至 5 个连续字块。' };
-  const { positions, orientation } = claimInfo;
+function validateWordClaim(board, startOrPositions, maybeEnd) {
+  let positions = null;
+
+  if (Array.isArray(startOrPositions)) {
+    positions = startOrPositions;
+  } else if (typeof startOrPositions === 'object' && startOrPositions !== null) {
+    if (Array.isArray(startOrPositions.positions)) {
+      positions = startOrPositions.positions;
+    } else if (Number.isInteger(startOrPositions.start) && Number.isInteger(startOrPositions.end)) {
+      const info = getClaimPositions(startOrPositions.start, startOrPositions.end);
+      if (!info) return { valid: false, error: '请选择同一行或同一列的 2 至 5 个连续字块。' };
+      positions = info.positions;
+    }
+  } else if (Number.isInteger(startOrPositions) && Number.isInteger(maybeEnd)) {
+    const info = getClaimPositions(startOrPositions, maybeEnd);
+    if (!info) return { valid: false, error: '请选择同一行或同一列的 2 至 5 个连续字块。' };
+    positions = info.positions;
+  }
+
+  if (!positions || !Array.isArray(positions)) {
+    return { valid: false, error: '请选择有效字块。' };
+  }
+
+  if (positions.length < 2 || positions.length > BOARD_SIZE) {
+    return { valid: false, error: '请选择 2 至 5 个相邻字块。' };
+  }
+
+  if (new Set(positions).size !== positions.length) {
+    return { valid: false, error: '字块不能重复选择。' };
+  }
+
+  if (positions.some(pos => !Number.isInteger(pos) || pos < 0 || pos >= BOARD_SIZE * BOARD_SIZE)) {
+    return { valid: false, error: '所选字块超出棋盘范围。' };
+  }
+
   const grid = Array.isArray(board) ? board : [];
-  if (positions.some(pos => !grid[pos])) return { valid: false, error: '所选区域包含空格。' };
+  if (positions.some(pos => !grid[pos])) {
+    return { valid: false, error: '所选区域包含空格。' };
+  }
+
+  if (!arePositionsConnected(positions)) {
+    return { valid: false, error: '所选字块必须相互相邻。' };
+  }
+
+  // Determine orientation
+  const rows = positions.map(pos => Math.floor(pos / BOARD_SIZE));
+  const cols = positions.map(pos => pos % BOARD_SIZE);
+  const minRow = Math.min(...rows), maxRow = Math.max(...rows);
+  const minCol = Math.min(...cols), maxCol = Math.max(...cols);
+
+  let orientation = 'adjacent';
+  if (minRow === maxRow && maxCol - minCol + 1 === positions.length) {
+    orientation = 'horizontal';
+  } else if (minCol === maxCol && maxRow - minRow + 1 === positions.length) {
+    orientation = 'vertical';
+  }
+
+  const tiles = positions.map(pos => ({
+    r: Math.floor(pos / BOARD_SIZE),
+    c: pos % BOARD_SIZE,
+    char: grid[pos]
+  }));
+
+  const matchedSet = new Set();
+
+  // 1) 2D structural match based on character decomposition
+  for (const char of findCharactersForTiles(tiles)) {
+    matchedSet.add(char);
+  }
+
+  // 2) 1D sequence match (horizontal or vertical)
+  if (orientation === 'horizontal') {
+    const seq = positions.slice().sort((a, b) => (a % BOARD_SIZE) - (b % BOARD_SIZE)).map(p => grid[p]).join('');
+    const targets = validSequences.horizontal.get(seq);
+    if (targets) for (const c of targets) matchedSet.add(c);
+  } else if (orientation === 'vertical') {
+    const seq = positions.slice().sort((a, b) => Math.floor(a / BOARD_SIZE) - Math.floor(b / BOARD_SIZE)).map(p => grid[p]).join('');
+    const targets = validSequences.vertical.get(seq);
+    if (targets) for (const c of targets) matchedSet.add(c);
+  }
 
   const sequence = positions.map(pos => grid[pos]).join('');
-  const targets = validSequences[orientation]?.get(sequence);
-  if (!targets || targets.size === 0) {
-    const dirText = orientation === 'horizontal' ? '横向' : '纵向';
+  if (matchedSet.size === 0) {
+    const dirText = orientation === 'horizontal' ? '横向' : orientation === 'vertical' ? '纵向' : '所选布局';
     return { valid: false, error: `「${sequence}」在${dirText}上无法合成有效汉字。` };
   }
 
   return {
     valid: true,
     sequence,
-    characters: [...targets],
-    positions,
+    characters: [...matchedSet],
+    positions: positions.slice().sort((a, b) => a - b),
     tileCount: positions.length,
     orientation
   };

@@ -4,11 +4,11 @@
 
 ## Scope
 
-The character set is the first tier (ranks 1-3500) of the 2013 Table of General Standard Chinese Characters (`通用规范汉字表`). Membership and rank are selected from Unicode 18.0.0 Unihan `kTGH` records with ranks `2013:1` through `2013:3500`.
+The character set covers both Tier 1 and Tier 2 (ranks 1-6500) of the 2013 Table of General Standard Chinese Characters (`通用规范汉字表`). Membership and rank are selected from Unicode 18.0.0 Unihan `kTGH` records with ranks `2013:1` through `2013:6500`.
 
-Each available Ideographic Description Sequence (IDS) is retained as a tree, including its arrangement operators. Component-only forms found in those trees are also included as tokens. Keeping the tree lets a future matcher recognize either a complete character tile or a nested sequence of its components without collapsing all characters down to stroke-like pieces.
+Each available Ideographic Description Sequence (IDS) is retained as a tree, including its arrangement operators. Component-only forms found in those trees are also included as tokens. Keeping the tree lets the matcher recognize either a complete character tile or a nested sequence of its components without collapsing characters down to stroke-like pieces.
 
-The source provides complete decompositions for 3,287 of the 3,500 characters. Its 213 unknown or partial decompositions are retained in `incomplete` and have `complete: false`; they are not silently treated as validated decompositions. The inventory is exhaustive for the 3,500 character identities and includes 309 additional component-only forms.
+The dataset provides 100% complete decompositions for all 6,500 characters (3,500 Tier 1 and 3,000 Tier 2 characters). Decompositions for characters that were missing or had partial/unknown entries (`？`) in Make Me a Hanzi have been completed using the CJKVI IDS database.
 
 The three aliases `亻 → 人`, `氵 → 水`, and `犭 → 犬` are explicit game-facing relationships. Other component forms remain distinct tokens until their aliases are reviewed.
 
@@ -16,5 +16,6 @@ The three aliases `亻 → 人`, `氵 → 水`, and `犭 → 犬` are explicit g
 
 - Make Me a Hanzi `dictionary.txt`, pinned to commit [`bddc96d41bef78427ed0e034e9f7e31d71fd1b92`](https://github.com/skishore/makemeahanzi/commit/bddc96d41bef78427ed0e034e9f7e31d71fd1b92). Its dictionary data is licensed under LGPL-3.0-or-later; the source and license notices are included in `sources/`.
 - Unicode 18.0.0 `Unihan_OtherMappings.txt`, which supplies `kTGH` ranks. Its source header and the Unicode License v3 are included in `sources/`.
+- CJKVI IDS `cjkvi-ids.txt` (CHISE / CJKVI database), providing complete Ideographic Description Sequences for Chinese characters.
 
 The generated data is filtered, parsed, and augmented with component-token counts and the listed aliases. Keep the included source notices with copies of the generated data.

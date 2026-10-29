@@ -227,7 +227,7 @@
       <div>
         <p class="definition-kicker">最终认领</p>
         <h1>寻找你的汉字</h1>
-        <p>点击起点和终点，圈选同行或同列的字块，然后确认。</p>
+        <p>点击相邻字块圈选汉字（支持横向、纵向或拐角组合），然后确认。</p>
       </div>
       <div class="manual-timer" id="manual-timer" aria-live="polite" aria-label="剩余时间">2:00</div>
     </div>
@@ -778,21 +778,33 @@
     // ═══════════════════════════════════════════════════════
     // Manual Scoring helpers
     // ═══════════════════════════════════════════════════════
-    function getManualPath(first, second) {
+    function isCellAdjacent(pos1, pos2) {
+      const r1 = Math.floor(pos1 / 5);
+      const c1 = pos1 % 5;
+      const r2 = Math.floor(pos2 / 5);
+      const c2 = pos2 % 5;
+      return Math.abs(r1 - r2) + Math.abs(c1 - c2) === 1;
+    }
+
+    function isAdjacentToSelection(pos, selected) {
+      return selected.some(p => isCellAdjacent(pos, p));
+    }
+
+    function getStraightLinePath(first, second) {
       const firstRow = Math.floor(first / 5);
       const secondRow = Math.floor(second / 5);
       const firstCol = first % 5;
       const secondCol = second % 5;
       const path = [];
 
-      // Strictly left-to-right (same row, second column to the right)
-      if (firstRow === secondRow && secondCol > firstCol) {
-        for (let c = firstCol; c <= secondCol; c++) {
+      if (firstRow === secondRow) {
+        const step = secondCol >= firstCol ? 1 : -1;
+        for (let c = firstCol; step > 0 ? c <= secondCol : c >= secondCol; c += step) {
           path.push(firstRow * 5 + c);
         }
-      // Strictly top-to-bottom (same column, second row below)
-      } else if (firstCol === secondCol && secondRow > firstRow) {
-        for (let r = firstRow; r <= secondRow; r++) {
+      } else if (firstCol === secondCol) {
+        const step = secondRow >= firstRow ? 1 : -1;
+        for (let r = firstRow; step > 0 ? r <= secondRow : r >= secondRow; r += step) {
           path.push(r * 5 + firstCol);
         }
       }
@@ -805,12 +817,14 @@
       if (!state.grid[index]) return;
 
       if (state.manualSelected.includes(index)) {
-        if (index === state.manualSelected[state.manualSelected.length - 1]) {
+        const clickedPos = state.manualSelected.indexOf(index);
+        if (clickedPos === state.manualSelected.length - 1) {
           state.manualSelected = state.manualSelected.slice(0, -1);
-        } else if (state.manualSelected.length === 1 && index === state.manualSelected[0]) {
+        } else if (state.manualSelected.length === 1) {
           state.manualSelected = [];
         } else {
-          toast('只能取消末尾选中的字块。');
+          // Truncate back to this tile
+          state.manualSelected = state.manualSelected.slice(0, clickedPos);
         }
         renderManualBoard();
         updateManualSelectionBar();
@@ -820,28 +834,27 @@
       if (state.manualSelected.length === 0) {
         state.manualSelected = [index];
       } else if (state.manualSelected.length === 1) {
-        const path = getManualPath(state.manualSelected[0], index);
-        if (path.length >= 2) {
-          state.manualSelected = path;
+        const first = state.manualSelected[0];
+        if (isCellAdjacent(first, index)) {
+          state.manualSelected.push(index);
         } else {
-          toast('请向右或向下选择字块。');
-          state.manualSelected = [index];
+          const linePath = getStraightLinePath(first, index);
+          if (linePath.length >= 2 && linePath.every(pos => Boolean(state.grid[pos]))) {
+            state.manualSelected = linePath;
+          } else {
+            state.manualSelected = [index];
+          }
         }
       } else {
-        const last = state.manualSelected[state.manualSelected.length - 1];
-        const pathFromLast = getManualPath(last, index);
-        if (pathFromLast.length === 2) {
-          const first = state.manualSelected[0];
-          const second = state.manualSelected[1];
-          const dirHorizontal = Math.floor(first / 5) === Math.floor(second / 5);
-          const newDirHorizontal = Math.floor(last / 5) === Math.floor(index / 5);
-          if (dirHorizontal === newDirHorizontal) {
-            state.manualSelected = state.manualSelected.concat(index);
-          } else {
-            toast('请沿相同方向（向右或向下）继续选择。');
-          }
+        if (state.manualSelected.length >= 5) {
+          toast('最多只能选择 5 个相邻字块。');
+          return;
+        }
+
+        if (isAdjacentToSelection(index, state.manualSelected)) {
+          state.manualSelected.push(index);
         } else {
-          toast('只能向右或向下扩展一个字块。');
+          toast('请选择与已选字块相邻的格子。');
         }
       }
 
@@ -1176,6 +1189,7 @@
       if (state.manualReady || state.manualSelected.length < 2) return;
       document.getElementById('manual-confirm-btn').disabled = true;
       socket.emit('claim_word', {
+        positions: state.manualSelected.slice(),
         start: state.manualSelected[0],
         end: state.manualSelected[state.manualSelected.length - 1]
       });
@@ -1196,6 +1210,10 @@
     });
 
     socket.on('game_state', applyGameState);
+
+    socket.on('market_refreshed', ({ message }) => {
+      toast(message || '字池已全面刷新！');
+    });
 
     socket.on('board_updated', ({ grid, automatic }) => {
       if (!Array.isArray(grid) || grid.length !== 25) return;

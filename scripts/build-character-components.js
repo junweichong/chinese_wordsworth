@@ -7,10 +7,12 @@ const dataDirectory = path.join(__dirname, '..', 'data', 'character-components')
 const sourceDirectory = path.join(dataDirectory, 'sources');
 const dictionaryPath = path.join(sourceDirectory, 'makemeahanzi-dictionary.txt');
 const unihanPath = path.join(sourceDirectory, 'Unihan_OtherMappings.txt');
+const cjkviPath = path.join(sourceDirectory, 'cjkvi-ids.txt');
 const outputPath = path.join(dataDirectory, 'index.json');
 const sourceHashes = {
   'makemeahanzi-dictionary.txt': '744bb05d5b0742e9ee35c37791f94d56a173349b3367569e7ca11e510364d203',
-  'Unihan_OtherMappings.txt': 'fc7bbb8f923fa1e922a4d421aa15387d1c68250cc5e7619bdf81f575ab38472b'
+  'Unihan_OtherMappings.txt': 'fc7bbb8f923fa1e922a4d421aa15387d1c68250cc5e7619bdf81f575ab38472b',
+  'cjkvi-ids.txt': 'bfc70a8c09f9f5616ebf0543bd6681e67314e9f7ae2307e5ae8c6f15bdc5c6a6'
 };
 const unknownMarker = String.fromCodePoint(0xff1f);
 const operators = Array.from({ length: 12 }, (_, index) => ({
@@ -39,7 +41,7 @@ function readCharacterRanks(filePath) {
     const match = line.match(expression);
     if (!match) continue;
     const rank = Number(match[2]);
-    if (rank < 1 || rank > 3500) continue;
+    if (rank < 1 || rank > 6500) continue;
 
     const character = String.fromCodePoint(Number.parseInt(match[1], 16));
     assert(!ranks.has(character), `Duplicate table entry for ${character}`);
@@ -48,8 +50,8 @@ function readCharacterRanks(filePath) {
     ranksSeen.add(rank);
   }
 
-  assert.equal(ranks.size, 3500, 'Expected the 3,500 first-tier table characters');
-  for (let rank = 1; rank <= 3500; rank++) {
+  assert.equal(ranks.size, 6500, 'Expected the 6,500 Tier 1 and Tier 2 table characters');
+  for (let rank = 1; rank <= 6500; rank++) {
     assert(ranksSeen.has(rank), `Missing table rank ${rank}`);
   }
   return ranks;
@@ -62,6 +64,20 @@ function readSourceDictionary(filePath) {
     const entry = JSON.parse(line);
     assert(!entries.has(entry.character), `Duplicate dictionary entry for ${entry.character}`);
     entries.set(entry.character, entry);
+  }
+  return entries;
+}
+
+function readCjkviIds(filePath) {
+  const entries = new Map();
+  for (const line of fs.readFileSync(filePath, 'utf8').split(/\r?\n/)) {
+    if (!line || line.startsWith('#')) continue;
+    const parts = line.split('\t');
+    if (parts.length >= 3) {
+      const char = parts[1];
+      const ids = parts[2].split('[')[0].trim();
+      entries.set(char, ids);
+    }
   }
   return entries;
 }
@@ -169,15 +185,25 @@ for (const [name, expectedHash] of Object.entries(sourceHashes)) {
 
 const characterRanks = readCharacterRanks(unihanPath);
 const sourceEntries = readSourceDictionary(dictionaryPath);
+const cjkviEntries = readCjkviIds(cjkviPath);
 const leafCounts = new Map();
 const records = new Map();
 
 for (const [character, rank] of characterRanks) {
   const source = sourceEntries.get(character);
-  assert(source, `Missing decomposition source record for ${character}`);
-  const ids = source.decomposition || null;
+  let ids = source?.decomposition || null;
+  let complete = Boolean(ids) && !ids.includes(unknownMarker) && !ids.includes('?');
+
+  if (!complete) {
+    const fallbackIds = cjkviEntries.get(character);
+    if (fallbackIds && !fallbackIds.includes(unknownMarker) && !fallbackIds.includes('?')) {
+      ids = fallbackIds;
+      complete = true;
+    }
+  }
+
+  assert(ids, `Missing decomposition for ${character}`);
   const tree = ids ? parseIds(ids) : null;
-  const complete = Boolean(ids) && !ids.includes(unknownMarker) && !ids.includes('?');
   const record = { character, rank, ids, tree, complete };
   records.set(character, record);
   if (tree) addLeafCounts(tree, leafCounts);
@@ -217,16 +243,16 @@ const payload = {
   scope: {
     table: '通用规范汉字表 / Table of General Standard Chinese Characters',
     year: 2013,
-    tier: 1,
+    tier: '1-2',
     firstRank: 1,
-    lastRank: 3500,
+    lastRank: 6500,
     characterCount: characters.length,
     completeDecompositionCount: completeCount,
     incompleteDecompositionCount: characters.length - completeCount
   },
   sources: {
-    decompositions: 'Make Me a Hanzi dictionary.txt at commit bddc96d41bef78427ed0e034e9f7e31d71fd1b92',
-    characterScope: 'Unicode 18.0.0 Unihan kTGH property; 2013 ranks 1-3500'
+    decompositions: 'Make Me a Hanzi dictionary.txt with CJKVI IDS fallback for missing/incomplete entries',
+    characterScope: 'Unicode 18.0.0 Unihan kTGH property; 2013 ranks 1-6500'
   },
   operators,
   aliases: [...aliases].map(([component, character]) => ({ component, character })),

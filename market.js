@@ -26,9 +26,9 @@ const POOLS = {
 };
 
 const CATEGORY_SLOTS = [
-  { category: 'side_radical', count: 8 },
-  { category: 'top_radical', count: 5 },
-  { category: 'single_character', count: 7 }
+  { category: 'side_radical', count: 5 },
+  { category: 'top_radical', count: 3 },
+  { category: 'single_character', count: 12 }
 ];
 
 function drawTile(category, usedSymbols, random, slotId = randomUUID()) {
